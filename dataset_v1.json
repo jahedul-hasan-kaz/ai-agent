@@ -1,0 +1,3098 @@
+[
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Michael, it's Blake from Lester Glenn Honda. Still thinking about your 2019 HR-V? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "66000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2019 HR-V is looking at roughly $6,150. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jae, this is Jeff Wyler Eastgate Kia. Thank you for being a valued customer. When you purchased your 2021 K5, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Antoine, Blake from Daytona Kia. Haven't reached out in a while, but your 2020 Carnival just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Joseph, it's Blake from Koons Ford of Silver Spring. Still thinking about your 2019 Expedition Max? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not a good time, will text later"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good, no rush at all. Text me whenever you're ready and I'll take it from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Olivia, well-maintained vehicles like your 1500 tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not interested"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Olivia, and good choice if it's serving you well. If you ever want a no-pressure number on your 1500, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Lori, it's Blake at Lester Glenn Hyundai Toms River. Ready to trade or sell your 2022 Palisade? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's leased, can I still trade it?"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased Palisade can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "Not sure, I'd have to look"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Diana, it's Blake at Lester Glenn Honda. Ready to trade or sell your 2019 Civic? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Remove me from your list"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Sophie, well-maintained vehicles like your 1500 tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "my son was at boot camp he will be home next week"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks for letting me know! I'll hold off until then. If you'd like us to stop texting this number in the meantime, just reply STOP."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Diana, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2019 1500 is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yeah what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "57k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2019 1500 is looking at roughly $14,100. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Yeah that works"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Monday at 10AM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Monday at 10AM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Joseph, it's Blake at Lester Glenn Hyundai Toms River. Ready to trade or sell your 2019 Palisade? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not a good time, will text later"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good, no rush at all. Text me whenever you're ready and I'll take it from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Regan, it's Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. Ready to trade or sell your 2022 1500? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your 1500?"
+      },
+      {
+        "role": "user",
+        "content": "53,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Quick question so the estimate is accurate: any accidents or major damage, and is it in good running condition?"
+      },
+      {
+        "role": "user",
+        "content": "No accidents, runs great"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, that helps. With that in mind, your 2022 1500 is looking at roughly $24,750. It's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to go over it?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Mychal, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - we're seeing strong demand for Sorentos right now. I can pull a quick market value on your 2024 Sorento - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop texting me"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Nicholas, Blake at Daytona Kia. As a valued customer, wanted to reach out - we're seeing strong demand for Tucsons right now. I can pull a quick market value on your 2020 Tucson - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "64,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Your 2020 Tucson is looking at roughly $8,050 based on current market data. That's an initial estimate - the final number depends on an in-person look."
+      },
+      {
+        "role": "user",
+        "content": "That seems low"
+      },
+      {
+        "role": "assistant",
+        "content": "I hear you. Online estimates are a starting point, and condition, trim, options and service history can move the number. An in-person look lets us give you our best figure. Would you like to stop by, or I can have an appraiser call you?"
+      },
+      {
+        "role": "user",
+        "content": "I'll stop by this week"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good. Let me know what day and time suits you and I'll set it up."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Eric, Blake at Koons Mazda of Silver Spring. As a valued customer, wanted to reach out - we're seeing strong demand for CX-50s right now. I can pull a quick market value on your 2025 CX-50 - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "38000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Eric! At that mileage, your 2025 CX-50 is looking at roughly $23,150 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course - just let me know a day and time that suits you and I'll take care of the rest."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Terrell, if your 1500 was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Maria was at boot camp he will be home next week"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks for letting me know! I'll hold off until then. If you'd like us to stop texting this number in the meantime, just reply STOP."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Kaimana, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2021 Challenger is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Can't right now but maybe later today....4:00-5:00 ish"
+      },
+      {
+        "role": "assistant",
+        "content": "No problem, Kaimana! I'll follow up later this afternoon. If a different time is better, just text me and I'll adjust."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Diana, it's Blake from Koons Mazda of Silver Spring. Still thinking about your 2021 CX-50? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "How did you get my number?"
+      },
+      {
+        "role": "assistant",
+        "content": "Fair question! This is Blake, a virtual assistant for Koons Mazda of Silver Spring. You're on our list as a past customer or contact for your 2021 CX-50. If you'd rather not hear from us, reply STOP and I'll remove you right away. Otherwise I'm happy to help with a free value check."
+      },
+      {
+        "role": "user",
+        "content": "Ok go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! What's the current mileage on your CX-50? That's all I need for a first estimate."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Paul, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - we're seeing strong demand for Sonatas right now. I can pull a quick market value on your 2019 Sonata - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "it's at 58,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Paul! At that mileage, your 2019 Sonata is looking at roughly $8,450 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good! Tell me what day works best and I'll lock it in."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Lisa, Blake from Lester Glenn Hyundai Toms River. Haven't reached out in a while, but your 2025 Palisade just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Maybe, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Lisa! To give you a real number, what's the current mileage on your Palisade?"
+      },
+      {
+        "role": "user",
+        "content": "20,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2025 Palisade is looking at roughly $29,500. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Kaimana, Blake at Lester Glenn Honda. As a valued customer, wanted to reach out - used car values are running strong, and your 2024 HR-V is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Joseph, it's Blake at Jeff Wyler Fairfield. Would you like a fast trade-in appraisal for your 2022 Soul? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yeah what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Soul?"
+      },
+      {
+        "role": "user",
+        "content": "69k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2022 Soul is looking at roughly $15,900. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Not right now, thanks"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Gregory, with new inventory landing on the lot, it's a great time to see how your Altima stacks up. I can show you your trade-in value and what's available - just let me know.\n\n- Blake at Jeff Wyler Fairfield\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Wrong number"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Gregory, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Rachael, Blake at Koons Mazda of Silver Spring. As a valued customer, wanted to reach out - we're seeing strong demand for CX-5s right now. I can pull a quick market value on your 2021 CX-5 - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "46k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Rachael! At that mileage, your 2021 CX-5 is looking at roughly $10,900 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "Maybe later this week"
+      },
+      {
+        "role": "assistant",
+        "content": "No rush. Text me whenever you're ready and we'll pick it up from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Bekele, it's Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. Would you like a fast trade-in appraisal for your 2025 Challenger? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sorry. I dont own the Challenger anymore"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Bekele, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Marcus, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2025 Challenger is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not a good time, will text later"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good, no rush at all. Text me whenever you're ready and I'll take it from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Kathryn, Blake at Koons Ford of Silver Spring. As a valued customer, wanted to reach out - we're seeing strong demand for Escape Plug-In Hybrids right now. I can pull a quick market value on your 2025 Escape Plug-In Hybrid - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "53,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Your 2025 Escape Plug-In Hybrid is looking at roughly $35,800 based on current market data. That's an initial estimate - the final number depends on an in-person look."
+      },
+      {
+        "role": "user",
+        "content": "That seems low"
+      },
+      {
+        "role": "assistant",
+        "content": "I hear you. Online estimates are a starting point, and condition, trim, options and service history can move the number. An in-person look lets us give you our best figure. Would you like to stop by, or I can have an appraiser call you?"
+      },
+      {
+        "role": "user",
+        "content": "Call me"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good. Let me know what day and time suits you and I'll set it up."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Paul, if your Escape Plug-In Hybrid was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Ford of Silver Spring\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "That's my brother's car, not mine"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks for letting me know! I'll hold off until then. If you'd like us to stop texting this number in the meantime, just reply STOP."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Maryurix, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - used car values are running strong, and your 2023 Telluride is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a used Toyota RAV4."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Maryurix! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Telluride to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Either, around $600 a month"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Mychal, Blake from Jeff Wyler Fairfield. Haven't reached out in a while, but your 2022 Soul just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Terrell, well-maintained vehicles like your 1500 tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "66k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2024 1500 is looking at roughly $33,800. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Alena, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - used car values are running strong, and your 2025 Sorento is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Busy at work, try me after 4"
+      },
+      {
+        "role": "assistant",
+        "content": "No problem, Alena! I'll follow up later this afternoon. If a different time is better, just text me and I'll adjust."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Daniel, it's Blake from Daytona Kia. Still thinking about your 2021 Tucson? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I sold that car last year"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Daniel, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Paul, it's Blake at Daytona Kia. Would you like a fast trade-in appraisal for your 2025 Sorento? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yeah what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Sorento?"
+      },
+      {
+        "role": "user",
+        "content": "About 28,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2025 Sorento is looking at roughly $26,400. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Lori, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - used car values are running strong, and your 2019 Sonata is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a Ford F-150 crew cab."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Lori! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Sonata to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Used preferably"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Eric, it's Blake from Koons Mazda of Silver Spring. Still thinking about your 2023 Mazda3? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure, go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "About 52,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Mazda3 is looking at roughly $15,450. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Yeah that works"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Wednesday at 9AM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "Sounds good"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Wednesday at 9AM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Miguel, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - we're seeing strong demand for Sonatas right now. I can pull a quick market value on your 2019 Sonata - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "51k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Miguel! At that mileage, your 2019 Sonata is looking at roughly $8,950 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course - just let me know a day and time that suits you and I'll take care of the rest."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Antoine, if your Telluride was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Jeff Wyler Eastgate Kia\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Bekele, Blake at Koons Lincoln. As a valued customer, wanted to reach out - we're seeing strong demand for Navigators right now. I can pull a quick market value on your 2021 Navigator - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "it's at 63,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Bekele! At that mileage, your 2021 Navigator is looking at roughly $24,750 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course - just let me know a day and time that suits you and I'll take care of the rest."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Angela, Blake at Lester Glenn Honda. As a valued customer, wanted to reach out - we're seeing strong demand for CR-Vs right now. I can pull a quick market value on your 2023 CR-V - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "50,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Angela! At that mileage, your 2023 CR-V is looking at roughly $16,200 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "A call is fine"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good! Tell me what day works best and I'll lock it in."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Michelle, Blake from Koons Ford of Silver Spring. Haven't reached out in a while, but your 2021 Mach-E just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Michelle! To give you a real number, what's the current mileage on your Mach-E?"
+      },
+      {
+        "role": "user",
+        "content": "55,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2021 Mach-E is looking at roughly $17,750. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Emilee, with new inventory landing on the lot, it's a great time to see how your Navigator stacks up. I can show you your trade-in value and what's available - just let me know.\n\n- Blake at Koons Lincoln\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's a lease, but yeah, sure go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased Navigator can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "Ends next spring"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Bekele, Blake at Jeff Wyler Fairfield. As a valued customer, wanted to reach out - we're seeing strong demand for Sonatas right now. I can pull a quick market value on your 2021 Sonata - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi John, Blake at Koons Mazda of Silver Spring. As a valued customer, wanted to reach out - used car values are running strong, and your 2021 CX-50 is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I'll message you back with that when I can."
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good, no rush at all. Text me whenever you're ready and I'll take it from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Alena, it's Blake at Koons Lincoln. Would you like a fast trade-in appraisal for your 2021 Navigator? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure, go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "About 73,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2021 Navigator is looking at roughly $24,050. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Marcus, Blake from Koons Lincoln. Haven't reached out in a while, but your 2019 Aviator just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Marcus! To give you a real number, what's the current mileage on your Aviator?"
+      },
+      {
+        "role": "user",
+        "content": "50,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2019 Aviator is looking at roughly $18,050. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Fredrick, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - we're seeing strong demand for Sorentos right now. I can pull a quick market value on your 2022 Sorento - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "57,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Your 2022 Sorento is looking at roughly $16,250 based on current market data. That's an initial estimate - the final number depends on an in-person look."
+      },
+      {
+        "role": "user",
+        "content": "Other places said higher"
+      },
+      {
+        "role": "assistant",
+        "content": "I hear you. Online estimates are a starting point, and condition, trim, options and service history can move the number. An in-person look lets us give you our best figure. Would you like to stop by, or I can have an appraiser call you?"
+      },
+      {
+        "role": "user",
+        "content": "I'll stop by this week"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good. Let me know what day and time suits you and I'll set it up."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Rachael, Blake from Lester Glenn Hyundai Toms River. Haven't reached out in a while, but your 2021 Sonata just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure, what do you have in mind?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Rachael! To give you a real number, what's the current mileage on your Sonata?"
+      },
+      {
+        "role": "user",
+        "content": "29,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2021 Sonata is looking at roughly $14,850. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi John, it's Blake at Koons Mazda of Silver Spring. Would you like a fast trade-in appraisal for your 2021 Mazda3? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Mazda3?"
+      },
+      {
+        "role": "user",
+        "content": "18,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2021 Mazda3 is looking at roughly $12,850. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Mondays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Monday at 10AM work?"
+      },
+      {
+        "role": "user",
+        "content": "Works for me"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Monday at 10AM. Talk then!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jae, this is Lester Glenn Honda. Thank you for being a valued customer. When you purchased your 2019 Accord, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Steven, it's Blake from Koons Lincoln. Still thinking about your 2019 Nautilus? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Nautilus?"
+      },
+      {
+        "role": "user",
+        "content": "21,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2019 Nautilus is looking at roughly $20,050. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Tuesdays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Tuesday at 2PM work?"
+      },
+      {
+        "role": "user",
+        "content": "Yes that's fine"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Tuesday at 2PM. Talk then!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Marta, it's Blake at Koons Lincoln. Ready to trade or sell your 2023 Nautilus? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yeah what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Nautilus?"
+      },
+      {
+        "role": "user",
+        "content": "About 40,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Nautilus is looking at roughly $36,650. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Wednesday at 4PM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Wednesday at 4PM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Sophie, if your Navigator was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Lincoln\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Navigator?"
+      },
+      {
+        "role": "user",
+        "content": "around 20,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Navigator is looking at roughly $38,000. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Let me think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Antoine, well-maintained vehicles like your Sonata tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Jeff Wyler Fairfield\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Sonata?"
+      },
+      {
+        "role": "user",
+        "content": "19,500 miles"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2024 Sonata is looking at roughly $19,350. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jose, it's Blake at Lester Glenn Honda. Would you like a fast trade-in appraisal for your 2020 HR-V? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's a lease, but yeah, sure go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased HR-V can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "About 8 months left"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Marcus, with new inventory landing on the lot, it's a great time to see how your Sorento stacks up. I can show you your trade-in value and what's available - just let me know.\n\n- Blake at Jeff Wyler Eastgate Kia\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "81k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Sorento is looking at roughly $17,850. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "That's lower than I expected"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Gregory, this is Koons Mazda of Silver Spring. Thank you for being a valued customer. When you purchased your 2019 CX-5, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Michelle, it's Blake at Lester Glenn Honda. Would you like a fast trade-in appraisal for your 2019 CR-V? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's a lease, but yeah, sure go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased CR-V can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "Ends next spring"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Megan, Blake at Koons Lincoln. As a valued customer, wanted to reach out - we're seeing strong demand for Corsairs right now. I can pull a quick market value on your 2025 Corsair - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "73k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Megan! At that mileage, your 2025 Corsair is looking at roughly $48,200 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "Maybe later this week"
+      },
+      {
+        "role": "assistant",
+        "content": "No rush. Text me whenever you're ready and we'll pick it up from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Daniel, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - we're seeing strong demand for K5s right now. I can pull a quick market value on your 2021 K5 - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "42500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Daniel! At that mileage, your 2021 K5 is looking at roughly $14,450 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good! Tell me what day works best and I'll lock it in."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jae, it's Blake at Koons Mazda of Silver Spring. Ready to trade or sell your 2025 Mazda3? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Is this a real person?"
+      },
+      {
+        "role": "assistant",
+        "content": "Fair question! This is Blake, a virtual assistant for Koons Mazda of Silver Spring. You're on our list as a past customer or contact for your 2025 Mazda3. If you'd rather not hear from us, reply STOP and I'll remove you right away. Otherwise I'm happy to help with a free value check."
+      },
+      {
+        "role": "user",
+        "content": "Fine, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! What's the current mileage on your Mazda3? That's all I need for a first estimate."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Joseph, this is Jeff Wyler Fairfield. Thank you for being a valued customer. When you purchased your 2019 Altima, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Joseph! You're all set to receive occasional updates about your Altima, like service reminders and offers. Reply STOP anytime to opt out."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Maryurix, it's Blake at Koons Lincoln. Would you like a fast trade-in appraisal for your 2022 Aviator? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Aviator?"
+      },
+      {
+        "role": "user",
+        "content": "41,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2022 Aviator is looking at roughly $31,050. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Wednesdays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Wednesday at 10AM work?"
+      },
+      {
+        "role": "user",
+        "content": "Yes that's fine"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Wednesday at 10AM. Talk then!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jose, it's Blake from Lester Glenn Hyundai Toms River. Still thinking about your 2023 Sonata? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes please"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Sonata?"
+      },
+      {
+        "role": "user",
+        "content": "68k"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Sonata is looking at roughly $18,150. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Monday at 5PM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Monday at 5PM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jamal, it's Blake from Lester Glenn Hyundai Toms River. Still thinking about your 2022 Sonata? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Can you just call me?"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course, Jamal! What day and time works best for a call?"
+      },
+      {
+        "role": "user",
+        "content": "Tomorrow after 5"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it, I'll arrange that and reach out then. If anything changes just text me."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Emilee, Blake at Daytona Kia. As a valued customer, wanted to reach out - used car values are running strong, and your 2024 Carnival is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I already traded it in"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Emilee, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Sardor, it's Blake from Jeff Wyler Eastgate Kia. Still thinking about your 2024 Telluride? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I sold that car last year"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Sardor, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Sophie, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - we're seeing strong demand for Tucsons right now. I can pull a quick market value on your 2020 Tucson - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "71,500 miles"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Sophie! At that mileage, your 2020 Tucson is looking at roughly $9,550 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "A call is fine"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course - just let me know a day and time that suits you and I'll take care of the rest."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jae, if your Corsair was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Lincoln\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Who is this?"
+      },
+      {
+        "role": "assistant",
+        "content": "Fair question! This is Blake, a virtual assistant for Koons Lincoln. You're on our list as a past customer or contact for your 2021 Corsair. If you'd rather not hear from us, reply STOP and I'll remove you right away. Otherwise I'm happy to help with a free value check."
+      },
+      {
+        "role": "user",
+        "content": "Fine, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! What's the current mileage on your Corsair? That's all I need for a first estimate."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Lori, it's Blake at Jeff Wyler Fairfield. Ready to trade or sell your 2025 Sonata? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Can you just call me?"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course, Lori! What day and time works best for a call?"
+      },
+      {
+        "role": "user",
+        "content": "Friday morning"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it, I'll arrange that and reach out then. If anything changes just text me."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Shane, it's Blake at Jeff Wyler Fairfield. Ready to trade or sell your 2021 Altima? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's leased, can I still trade it?"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased Altima can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "Ends next spring"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Terrell, if your Tucson was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Daytona Kia\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Tucson?"
+      },
+      {
+        "role": "user",
+        "content": "it's at 15,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2025 Tucson is looking at roughly $25,600. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "That's lower than I expected"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Olivia, this is Koons Ford of Silver Spring. Thank you for being a valued customer. When you purchased your 2022 Expedition Max, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Olivia! You're all set to receive occasional updates about your Expedition Max, like service reminders and offers. Reply STOP anytime to opt out."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Eric, well-maintained vehicles like your Durango tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I'm keeping it"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Eric, and good choice if it's serving you well. If you ever want a no-pressure number on your Durango, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Gregory, it's Blake at Daytona Kia. Would you like a fast trade-in appraisal for your 2022 Forte? I can have it ready in a few minutes.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Is this a real person?"
+      },
+      {
+        "role": "assistant",
+        "content": "Fair question! This is Blake, a virtual assistant for Daytona Kia. You're on our list as a past customer or contact for your 2022 Forte. If you'd rather not hear from us, reply STOP and I'll remove you right away. Otherwise I'm happy to help with a free value check."
+      },
+      {
+        "role": "user",
+        "content": "Fine, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! What's the current mileage on your Forte? That's all I need for a first estimate."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Anthony, it's Blake from Jeff Wyler Fairfield. Still thinking about your 2020 Altima? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Is this a real person?"
+      },
+      {
+        "role": "assistant",
+        "content": "Fair question! This is Blake, a virtual assistant for Jeff Wyler Fairfield. You're on our list as a past customer or contact for your 2020 Altima. If you'd rather not hear from us, reply STOP and I'll remove you right away. Otherwise I'm happy to help with a free value check."
+      },
+      {
+        "role": "user",
+        "content": "Fine, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! What's the current mileage on your Altima? That's all I need for a first estimate."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jennifer, if your Nautilus was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Lincoln\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Call me instead"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course, Jennifer! What day and time works best for a call?"
+      },
+      {
+        "role": "user",
+        "content": "Friday morning"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it, I'll arrange that and reach out then. If anything changes just text me."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Regan, Blake at Lester Glenn Honda. As a valued customer, wanted to reach out - we're seeing strong demand for Civics right now. I can pull a quick market value on your 2024 Civic - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "18500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Regan! At that mileage, your 2024 Civic is looking at roughly $21,650 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course - just let me know a day and time that suits you and I'll take care of the rest."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Alena, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - used car values are running strong, and your 2021 K5 is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your K5?"
+      },
+      {
+        "role": "user",
+        "content": "63500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2021 K5 is looking at roughly $12,950. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Yeah that works"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Wednesday at 10AM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "That works"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Wednesday at 10AM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Brian, it's Blake from Lester Glenn Chrysler Dodge Jeep RAM FIAT. Still thinking about your 2019 Durango? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Durango?"
+      },
+      {
+        "role": "user",
+        "content": "34,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2019 Durango is looking at roughly $12,200. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Thursdays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Thursday at 1PM work?"
+      },
+      {
+        "role": "user",
+        "content": "Works for me"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Thursday at 1PM. Talk then!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Sardor, this is Lester Glenn Chrysler Dodge Jeep RAM FIAT. Thank you for being a valued customer. When you purchased your 2021 Cherokee, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Sardor! You're all set to receive occasional updates about your Cherokee, like service reminders and offers. Reply STOP anytime to opt out."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Frank, Blake from Jeff Wyler Eastgate Kia. Haven't reached out in a while, but your 2021 Telluride just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Unsubscribe"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Michelle, it's Blake at Lester Glenn Hyundai Toms River. Ready to trade or sell your 2025 Palisade? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes please"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "it's at 25,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2025 Palisade is looking at roughly $29,200. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Lori, it's Blake from Lester Glenn Hyundai Toms River. Still thinking about your 2019 Tucson? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Maria was at boot camp he will be home next week"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks for letting me know! I'll hold off until then. If you'd like us to stop texting this number in the meantime, just reply STOP."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Fredrick, it's Blake at Daytona Kia. Ready to trade or sell your 2020 Carnival? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Carnival?"
+      },
+      {
+        "role": "user",
+        "content": "67,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2020 Carnival is looking at roughly $8,650. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Not right now, thanks"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jean, this is Jeff Wyler Fairfield. Thank you for being a valued customer. When you purchased your 2020 Altima, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Jean! You're all set to receive occasional updates about your Altima, like service reminders and offers. Reply STOP anytime to opt out."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Gabriel, well-maintained vehicles like your Accord tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Honda\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I'm keeping it"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Gabriel, and good choice if it's serving you well. If you ever want a no-pressure number on your Accord, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Sophie, well-maintained vehicles like your Civic tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Honda\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a Chevy Silverado 2500 extended cab."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Sophie! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Civic to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Either, around $600 a month"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Frank, well-maintained vehicles like your Palisade tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Hyundai Toms River\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure, go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "69500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2024 Palisade is looking at roughly $21,750. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Thursday at 2PM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "That works"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Thursday at 2PM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Jean, Blake at Koons Mazda of Silver Spring. As a valued customer, wanted to reach out - we're seeing strong demand for Mazda3s right now. I can pull a quick market value on your 2019 Mazda3 - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "29,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Your 2019 Mazda3 is looking at roughly $8,350 based on current market data. That's an initial estimate - the final number depends on an in-person look."
+      },
+      {
+        "role": "user",
+        "content": "Other places said higher"
+      },
+      {
+        "role": "assistant",
+        "content": "I hear you. Online estimates are a starting point, and condition, trim, options and service history can move the number. An in-person look lets us give you our best figure. Would you like to stop by, or I can have an appraiser call you?"
+      },
+      {
+        "role": "user",
+        "content": "I'll stop by this week"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good. Let me know what day and time suits you and I'll set it up."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Vanessa, if your Cherokee was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes please"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - I can pull that up for you. What's the current mileage showing on your Cherokee?"
+      },
+      {
+        "role": "user",
+        "content": "62,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2019 Cherokee is looking at roughly $10,950. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "That's lower than I expected"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Adam, Blake at Jeff Wyler Eastgate Kia. As a valued customer, wanted to reach out - used car values are running strong, and your 2022 Sorento is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop texting me"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Richard, well-maintained vehicles like your Palisade tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Lester Glenn Hyundai Toms River\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a Chevy Silverado 2500 extended cab."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Richard! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Palisade to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Either, around $600 a month"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Maryurix, Blake from Koons Ford of Silver Spring. Haven't reached out in a while, but your 2022 Escape Plug-In Hybrid just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Joseph, it's Blake from Jeff Wyler Fairfield. Still thinking about your 2023 Telluride? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not interested"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Joseph, and good choice if it's serving you well. If you ever want a no-pressure number on your Telluride, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "William, Blake from Jeff Wyler Fairfield. Haven't reached out in a while, but your 2022 K5 just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, William! To give you a real number, what's the current mileage on your K5?"
+      },
+      {
+        "role": "user",
+        "content": "22,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2022 K5 is looking at roughly $19,250. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Bradley, Blake at Koons Ford of Silver Spring. As a valued customer, wanted to reach out - we're seeing strong demand for Explorers right now. I can pull a quick market value on your 2020 Explorer - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "About 13,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Bradley! At that mileage, your 2020 Explorer is looking at roughly $17,700 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "No rush. Text me whenever you're ready and we'll pick it up from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Michael, this is Lester Glenn Honda. Thank you for being a valued customer. When you purchased your 2022 Pilot, you opted in to receive texts from us. We'd like to stay connected with helpful updates about your vehicle. Reply YES to continue receiving messages.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Michael! You're all set to receive occasional updates about your Pilot, like service reminders and offers. Reply STOP anytime to opt out."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Samuel, it's Blake at Daytona Kia. Ready to trade or sell your 2021 Tucson? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Can we talk this evening?"
+      },
+      {
+        "role": "assistant",
+        "content": "No problem, Samuel! I'll follow up later this afternoon. If a different time is better, just text me and I'll adjust."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Lucy, with new inventory landing on the lot, it's a great time to see how your CX-30 stacks up. I can show you your trade-in value and what's available - just let me know.\n\n- Blake at Koons Mazda of Silver Spring\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Call me instead"
+      },
+      {
+        "role": "assistant",
+        "content": "Of course, Lucy! What day and time works best for a call?"
+      },
+      {
+        "role": "user",
+        "content": "Tomorrow after 5"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it, I'll arrange that and reach out then. If anything changes just text me."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Shane, it's Blake from Jeff Wyler Fairfield. Still thinking about your 2020 Altima? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Altima?"
+      },
+      {
+        "role": "user",
+        "content": "54,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Quick question so the estimate is accurate: any accidents or major damage, and is it in good running condition?"
+      },
+      {
+        "role": "user",
+        "content": "No accidents, runs great"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, that helps. With that in mind, your 2020 Altima is looking at roughly $7,100. It's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to go over it?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Brian, Blake from Lester Glenn Chrysler Dodge Jeep RAM FIAT. Haven't reached out in a while, but your 2019 Challenger just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Maybe, what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Brian! To give you a real number, what's the current mileage on your Challenger?"
+      },
+      {
+        "role": "user",
+        "content": "30,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on current market data, your 2019 Challenger is looking at roughly $12,500. That's an initial estimate - the final number depends on an in-person look. Want a quick call to talk through options?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Bradley, it's Blake at Lester Glenn Honda. Ready to trade or sell your 2019 HR-V? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I'll message you back with that when I can."
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good, no rush at all. Text me whenever you're ready and I'll take it from there."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Vanessa, if your Aviator was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Lincoln\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yeah what's it worth?"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "55,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Aviator is looking at roughly $35,600. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Yeah that works"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Saturday at 3PM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Saturday at 3PM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Antoine, Blake from Jeff Wyler Fairfield. Haven't reached out in a while, but your 2019 Altima just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Angela, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - used car values are running strong, and your 2022 Palisade is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Busy at work, try me after 4"
+      },
+      {
+        "role": "assistant",
+        "content": "No problem, Angela! I'll follow up later this afternoon. If a different time is better, just text me and I'll adjust."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Kevin, Blake at Koons Ford of Silver Spring. As a valued customer, wanted to reach out - used car values are running strong, and your 2025 Expedition Max is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Expedition Max?"
+      },
+      {
+        "role": "user",
+        "content": "58,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Quick question so the estimate is accurate: any accidents or major damage, and is it in good running condition?"
+      },
+      {
+        "role": "user",
+        "content": "Small fender bender but fixed"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, that helps. With that in mind, your 2025 Expedition Max is looking at roughly $35,450. It's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to go over it?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Kaimana, it's Blake from Lester Glenn Chrysler Dodge Jeep RAM FIAT. Still thinking about your 2025 Challenger? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I sold that car last year"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Kaimana, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Jeffrey, well-maintained vehicles like your Escape Plug-In Hybrid tend to get stronger offers. I can pull a quick appraisal before values shift - just say the word.\n\n- Blake at Koons Ford of Silver Spring\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a Ford F-150 crew cab."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Jeffrey! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Escape Plug-In Hybrid to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Used preferably"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Daniel, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - we're seeing strong demand for Cherokees right now. I can pull a quick market value on your 2019 Cherokee - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "31,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Your 2019 Cherokee is looking at roughly $13,100 based on current market data. That's an initial estimate - the final number depends on an in-person look."
+      },
+      {
+        "role": "user",
+        "content": "Other places said higher"
+      },
+      {
+        "role": "assistant",
+        "content": "I hear you. Online estimates are a starting point, and condition, trim, options and service history can move the number. An in-person look lets us give you our best figure. Would you like to stop by, or I can have an appraiser call you?"
+      },
+      {
+        "role": "user",
+        "content": "Call me"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good. Let me know what day and time suits you and I'll set it up."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Alena, Blake at Koons Mazda of Silver Spring. As a valued customer, wanted to reach out - used car values are running strong, and your 2022 Mazda3 is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure, go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Got it - I can pull that, but I need the current mileage first. What's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "around 31,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2022 Mazda3 is looking at roughly $14,250. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "That's lower than I expected"
+      },
+      {
+        "role": "assistant",
+        "content": "Totally understand, no pressure at all. Values can move, and the in-person look can often help the number. Just text me whenever you'd like an updated figure."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Terrell, Blake from Koons Mazda of Silver Spring. Haven't reached out in a while, but your 2021 CX-30 just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop texting me"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Frank, Blake at Koons Lincoln. As a valued customer, wanted to reach out - used car values are running strong, and your 2022 Navigator is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I sold that car last year"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, Frank, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi David, it's Blake at Koons Mazda of Silver Spring. Ready to trade or sell your 2023 CX-30? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I already traded it in"
+      },
+      {
+        "role": "assistant",
+        "content": "No need to apologize, David, and thanks for letting me know. I'll update our records so you don't get messages about that vehicle. If you're ever looking for something new, just text me anytime."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Antoine, Blake at Lester Glenn Honda. As a valued customer, wanted to reach out - we're seeing strong demand for Civics right now. I can pull a quick market value on your 2023 Civic - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Anthony, Blake from Lester Glenn Hyundai Toms River. Haven't reached out in a while, but your 2019 Tucson just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Paul, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2020 Cherokee is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Sure"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "15000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2020 Cherokee is looking at roughly $16,750. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Stop"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Emilee, with new inventory landing on the lot, it's a great time to see how your 1500 stacks up. I can show you your trade-in value and what's available - just let me know.\n\n- Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "It's a lease, but yeah, sure go ahead"
+      },
+      {
+        "role": "assistant",
+        "content": "Good question - yes, a leased 1500 can often still be traded in. We'd just need to check your payoff with the leasing company, and any positive equity can go toward your next vehicle. Do you know roughly when your lease ends and your remaining months?"
+      },
+      {
+        "role": "user",
+        "content": "About 8 months left"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, that helps. When you get a chance, send me your current mileage and I'll get you a ballpark. If you can grab your payoff amount from your lease statement, we can figure out where you stand without any obligation."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Vanessa, it's Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. Ready to trade or sell your 2021 Grand Cherokee? Quick appraisals await!\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Grand Cherokee?"
+      },
+      {
+        "role": "user",
+        "content": "29,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Quick question so the estimate is accurate: any accidents or major damage, and is it in good running condition?"
+      },
+      {
+        "role": "user",
+        "content": "No accidents, runs great"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, that helps. With that in mind, your 2021 Grand Cherokee is looking at roughly $18,650. It's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to go over it?"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Sarah, Blake from Koons Lincoln. Haven't reached out in a while, but your 2025 Navigator just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Stop Stop bothering me"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Daniel, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2021 Wrangler is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Can't right now but maybe later today....4:00-5:00 ish"
+      },
+      {
+        "role": "assistant",
+        "content": "No problem, Daniel! I'll follow up later this afternoon. If a different time is better, just text me and I'll adjust."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Debra, Blake at Lester Glenn Hyundai Toms River. As a valued customer, wanted to reach out - we're seeing strong demand for Tucsons right now. I can pull a quick market value on your 2022 Tucson - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "59,500 miles"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks Debra! At that mileage, your 2022 Tucson is looking at roughly $15,550 based on current market data. That's an initial estimate - the final number depends on an in-person look. Would you like to set up a quick call or a short visit to firm it up?"
+      },
+      {
+        "role": "user",
+        "content": "I'll think about it"
+      },
+      {
+        "role": "assistant",
+        "content": "Sounds good! Tell me what day works best and I'll lock it in."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Jamal, Blake from Jeff Wyler Eastgate Kia. Haven't reached out in a while, but your 2022 Sorento just hit a sweet spot in our market - demand is up and we're short on inventory. Worth a 2-minute conversation if you're open to it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Unsubscribe"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Nicholas, it's Blake from Koons Lincoln. Still thinking about your 2021 Aviator? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "I am interested in a Ford F-150 crew cab."
+      },
+      {
+        "role": "assistant",
+        "content": "Happy to help with that, Nicholas! Are you looking at new or used, and do you have a rough budget or monthly payment in mind? If you'd like, I can also pull a trade-in value on your Aviator to help offset the cost."
+      },
+      {
+        "role": "user",
+        "content": "Used, under 40k"
+      },
+      {
+        "role": "assistant",
+        "content": "Great, thanks. I'll check what we have that matches and send you a few options shortly. If you want to see them in person, just tell me a day and time that works."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Eric, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - used car values are running strong, and your 2022 1500 is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Not interested"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Eric, and good choice if it's serving you well. If you ever want a no-pressure number on your 1500, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Talia, Blake at Lester Glenn Honda. As a valued customer, wanted to reach out - we're seeing strong demand for HR-Vs right now. I can pull a quick market value on your 2019 HR-V - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Unsubscribe"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Sarah, Blake at Lester Glenn Chrysler Dodge Jeep RAM FIAT. As a valued customer, wanted to reach out - we're seeing strong demand for Durangos right now. I can pull a quick market value on your 2020 Durango - no strings attached. Reply with your current mileage and I'll send it.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "STOP"
+      },
+      {
+        "role": "assistant",
+        "content": "You've been unsubscribed and won't receive further messages."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Shane, Blake at Koons Ford of Silver Spring. As a valued customer, wanted to reach out - used car values are running strong, and your 2023 Mach-E is in a good spot to capitalize. I can pull a quick market value - no strings attached. Want me to run it?\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your Mach-E?"
+      },
+      {
+        "role": "user",
+        "content": "57,000"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2023 Mach-E is looking at roughly $25,250. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Fridays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Friday at 11AM work?"
+      },
+      {
+        "role": "user",
+        "content": "Works for me"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Friday at 11AM. Talk then!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Fredrick, it's Blake from Koons Lincoln. Still thinking about your 2019 Navigator? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Maybe next year"
+      },
+      {
+        "role": "assistant",
+        "content": "Understood, Fredrick, and good choice if it's serving you well. If you ever want a no-pressure number on your Navigator, just text me anytime. Have a great day!"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Marialena, if your CX-50 was recently serviced, it's likely in great shape - which boosts its value. I can check what it's worth today if you're curious.\n\n- Blake at Koons Mazda of Silver Spring\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "To estimate your trade value, what's the mileage showing now?"
+      },
+      {
+        "role": "user",
+        "content": "70,500 miles"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2025 CX-50 is looking at roughly $20,850. Keep in mind that's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "Ok, call me"
+      },
+      {
+        "role": "assistant",
+        "content": "Great! Would Saturday at 11AM work for a quick call?"
+      },
+      {
+        "role": "user",
+        "content": "That works"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect, you're set for Saturday at 11AM. I'll reach out then. If anything changes just text me here."
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "assistant",
+        "content": "Hi Rachael, it's Blake from Lester Glenn Honda. Still thinking about your 2020 HR-V? I can pull an updated number for you anytime.\n\nReply STOP to opt out."
+      },
+      {
+        "role": "user",
+        "content": "Yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Perfect - what's the current mileage showing on your HR-V?"
+      },
+      {
+        "role": "user",
+        "content": "12,500"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks! Based on current market data, your 2020 HR-V is looking at roughly $11,650. That's an initial estimate - the final number depends on an in-person look. Want to set up a quick call to walk through the details?"
+      },
+      {
+        "role": "user",
+        "content": "I have Thursdays off so anytime"
+      },
+      {
+        "role": "assistant",
+        "content": "Would Thursday at 11AM work?"
+      },
+      {
+        "role": "user",
+        "content": "Works for me"
+      },
+      {
+        "role": "assistant",
+        "content": "You're all set for Thursday at 11AM. Talk then!"
+      }
+    ]
+  }
+]
