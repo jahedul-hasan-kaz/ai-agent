@@ -6,6 +6,7 @@ Gemini, OpenRouter, Groq) and **open source** models (Ollama, vLLM, or any
 OpenAI-compatible server). A single JSON value, `ai-agent-config`, holds the
 whole model setup.
 
+
 ## Run
 
 ```bash
