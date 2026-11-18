@@ -65,6 +65,12 @@ class ModelConfig(BaseModel):
     )
     stream_usage: bool = Field(True, description="Ask for token usage when streaming; false for servers that reject it (Gemini).")
 
+    supports_tools: bool = Field(
+        True,
+        description="The model can call the agent's tools (function calling). Set false for servers or small local "
+        "models that reject `tools`; that model then answers from the prompt alone.",
+    )
+
     fallbacks: list[str] = Field(default_factory=list, description="Model ids tried, in order, if this one fails.")
 
     @model_validator(mode="after")
@@ -135,6 +141,26 @@ class CustomerConfig(BaseModel):
     timeout: float = Field(5, gt=0, description="Seconds for every customer query; slower answers go out without it.")
 
 
+class ToolsConfig(BaseModel):
+    """The tools each agent can call (the ones wired to it in the n8n SMS handler), see app/tools."""
+
+    enabled: bool = True
+    write_mode: Literal["dry_run", "live"] = Field(
+        "dry_run",
+        description="dry_run: tools that change data (Save_Appointment_Notes, Update_mileage, Escalate_To_Human, "
+        "Suppress_Lead, Cancel_Appointment) run every check and read, then report what they would have written "
+        "(`dry_run: true`) without writing. live: they write to the backend's Postgres, as the n8n workflow does "
+        "(an escalation row pages the dealer).",
+    )
+    max_iterations: int = Field(6, ge=1, le=20, description="Most model turns that call tools before it must answer.")
+    timeout: float = Field(15, gt=0, description="Seconds for one tool call; a slower call returns an error to the model.")
+    max_result_chars: int = Field(8000, ge=500, le=100_000, description="A tool result is cut to this before the model sees it.")
+    disabled: list[str] = Field(default_factory=list, description="Tool names never offered, e.g. [\"Search_Inventory\"].")
+    marketcheck_api_key: str = Field("", description="Search_Inventory's MarketCheck key. Empty: Search_Inventory is not offered.")
+    marketcheck_base_url: str = "https://api.marketcheck.com"
+    knowledge_base_limit: int = Field(3, ge=1, le=10, description="Docs Knowledge_Base_Search returns (n8n: 3).")
+
+
 class PlaygroundConfig(BaseModel):
     """The web UI's chat tester (/v1/playground). It has no auth of its own, so it stays off unless enabled."""
 
@@ -147,6 +173,7 @@ class AgentConfig(BaseModel):
     models: list[ModelConfig] = Field(..., min_length=1)
     rag: Optional[RagConfig] = None
     customer: CustomerConfig = Field(default_factory=CustomerConfig)
+    tools: ToolsConfig = Field(default_factory=ToolsConfig)
     playground: PlaygroundConfig = Field(default_factory=PlaygroundConfig)
 
     @model_validator(mode="after")

@@ -139,6 +139,76 @@ fails, the reply is still returned, with `stored.error` set.
 | `max_vehicles` | `30` | Most vehicles listed. |
 | `timeout` | `5` | Seconds for all customer queries. |
 
+## Agent tools
+
+Each agent can call the tools wired to it in the n8n SMS handler (workflow `328CXNQvb2QWXXWk`), ported to Python in
+[app/tools](app/tools). The model decides when to call one; the gateway runs it, hands the result back, and repeats
+until the model answers (at most `tools.max_iterations` rounds, then it must answer).
+
+| Agent | Tools |
+|-------|-------|
+| `general` | Escalate_To_Human, Get_SMS_conversation_log, Knowledge_Base_Search, Suppress_Lead |
+| `inventory` | Escalate_To_Human, Search_Inventory |
+| `scheduling` | Cancel_Appointment, Escalate_To_Human, Save_Appointment_Notes, Validate_Appointment |
+| `value_data_collection` | Escalate_To_Human, Knowledge_Base_Search, Save_Appointment_Notes, Update_mileage |
+| `service_trade_reply` | Escalate_To_Human, Get_SMS_conversation_log, Knowledge_Base_Search, Suppress_Lead |
+
+| Tool | n8n node | What it does here |
+|------|----------|-------------------|
+| Knowledge_Base_Search | HTTP (query-kb webhook) | pgvector search of the tenant's `docs`, with the gateway's own retriever |
+| Get_SMS_conversation_log | Supabase | The thread's `sms_log` rows, oldest first |
+| Update_mileage | Supabase | `lead_vehicles.mileage`; only a figure the customer stated in their latest message |
+| Validate_Appointment | Code | Same parsing and guards as n8n, in the dealership's hours and time zone |
+| Save_Appointment_Notes | HTTP (PostgREST upsert) | Upsert on `(lead_id, cadence_id)`; a time is booked only if Validate_Appointment confirmed it in this completion |
+| Cancel_Appointment | Code | `public.cancel_appointment` |
+| Search_Inventory | Code | MarketCheck by `marketcheck_dealer_id`, dealer-site links from `tenant_inventory_config`, website fallback |
+| Escalate_To_Human | Code | `escalations` row (deterministic id per inbound message, so a retry never pages twice) |
+| Suppress_Lead | Code | `public.apply_lead_suppression` |
+
+Book_Service_Appointment and Get_Service_Pricing are disabled in the workflow and wired to no agent, so they are
+not offered even though some prompts mention them.
+
+- **Only what the request can run is offered.** Tools that act on the customer need `tenant_id` plus a thread key
+  (to find the lead); Knowledge_Base_Search needs `rag`; Search_Inventory needs `tools.marketcheck_api_key`.
+  Validate_Appointment needs nothing (it falls back to the default opening hours). Skipped tools are logged.
+- **Failures never fail the reply.** A tool that errors, times out (`tools.timeout`) or refuses returns
+  `{"ok": false, "error": …}` to the model, which answers accordingly.
+- **Arguments are requests, not authorization**, as in n8n: a permanent DNC needs a STOP-keyword turn or a reported
+  death; `vehicle_sold` needs a plain disposal statement; deferrals and bare acknowledgments never page a dealer.
+  These checks read the customer's own message. n8n's intent-classifier gates have no equivalent here.
+- **`write_mode`.** `dry_run` (default): tools that change data run every check and read, then report what they
+  would write (`dry_run: true`) and write nothing. `live`: they write to the backend's Postgres like n8n does;
+  an escalation row pages the dealer.
+- **Models.** Set `"supports_tools": false` on a model that cannot call functions; it then answers from the prompt
+  (as a fallback, it gets earlier tool calls as plain text). A model that rejects `tools` with a 400 is retried
+  without them. Send `"use_tools": false` on a request to turn tools off for it.
+- **Streaming.** With tools, the tool rounds run first and the reply arrives as one content chunk; without tools
+  it streams token by token as before.
+
+The response lists what was used:
+
+```json
+"tools_used": ["Validate_Appointment", "Save_Appointment_Notes"],
+"tool_calls": [
+  {"id": "toolu_…", "name": "Validate_Appointment", "kind": "code", "arguments": {"proposed_time": "Tuesday at 2pm"},
+   "ok": true, "latency_ms": 3, "error": null, "dry_run": false}
+]
+```
+
+When streaming, both are on the last chunk. `GET /v1/agents` lists each agent's `tools`; `GET /health` reports
+`tools: dry_run | live | no_database | off`.
+
+| `tools` field | Default | Meaning |
+|---------------|---------|---------|
+| `enabled` | `true` | Turn every tool off. |
+| `write_mode` | `dry_run` | `dry_run` or `live` (see above). |
+| `max_iterations` | `6` | Model turns that may call tools before it must answer. |
+| `timeout` | `15` | Seconds for one tool call. |
+| `max_result_chars` | `8000` | A tool result is cut to this before the model sees it. |
+| `disabled` | `[]` | Tool names never offered. |
+| `marketcheck_api_key` | `""` | Search_Inventory is offered only when set. |
+| `knowledge_base_limit` | `3` | Docs Knowledge_Base_Search returns. |
+
 ## API
 
 ### `POST /v1/chat/completions`
@@ -167,7 +237,7 @@ and `email_thread_key` (the customer's email address). See [Customer records](#c
 - Values the request leaves unset come from that model's config entry.
 - If a model fails upstream (5xx, 429, timeout, unreachable, bad key), its `fallbacks` are tried in order. A request the model rejects as invalid (400) is not retried on another model. When streaming, fallback happens only before the first token is sent.
 
-The response follows the OpenAI shape and adds `model_type`, `latency_ms`, and `fallback_used`. With `stream: true`, you get `chat.completion.chunk` SSE events ending with `data: [DONE]`, and the last chunk carries `usage`.
+The response follows the OpenAI shape and adds `model_type`, `latency_ms`, `fallback_used`, `tools_used` and `tool_calls` (see [Agent tools](#agent-tools)). With `stream: true`, you get `chat.completion.chunk` SSE events ending with `data: [DONE]`, and the last chunk carries `usage`.
 
 Errors always look like `{"error": {"message", "type", "code"}}`.
 
@@ -220,7 +290,9 @@ Returns the service status and the configured model ids.
 | `app/rag/store.py` | Creates, updates and deletes `docs` rows with their embedding |
 | `app/api/v1/endpoints/docs.py` | The `/v1/docs` routes |
 | `app/rag/context.py` | Builds the token-budgeted `<knowledge>` block, or the "nothing found" notice |
-| `app/services/chat_service.py` | Builds the request (system prompt + retrieved context), shapes JSON and SSE output |
+| `app/services/chat_service.py` | Builds the request (system prompt + retrieved context), runs the tool loop, shapes JSON and SSE output |
+| `app/tools/registry.py` | Which tools each agent has; runs a tool call safely |
+| `app/tools/*.py` | The tools, ported from the n8n SMS handler |
 | `app/core/config.py` | Dev/prod loading of `ai-agent-config` and `PG_DB_URL` |
 
 To use the manager from other code:

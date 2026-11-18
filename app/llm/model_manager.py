@@ -16,7 +16,7 @@ from typing import AsyncIterator, Callable, Optional
 from loguru import logger
 
 from app.llm.anthropic_provider import AnthropicProvider
-from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamItem
+from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamItem, flatten_tool_turns
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.settings import AgentConfig, ModelConfig, ModelType
 
@@ -119,7 +119,7 @@ class ModelManager:
         for index, model in enumerate(chain):
             try:
                 result = await self._providers[model.id].complete(_with_defaults(request, model))
-                if not result.content.strip():
+                if not result.content.strip() and not result.tool_calls:
                     raise LLMError(f"{model.id} returned an empty reply", code="empty_response")
                 return Completion(model=model, result=result, fallback_used=index > 0)
             except LLMError as exc:
@@ -175,9 +175,13 @@ def _combined(failures: list[tuple[str, LLMError]]) -> LLMError:
 
 
 def _with_defaults(request: LLMRequest, model: ModelConfig) -> LLMRequest:
-    """Fill what the caller left unset from this model's config entry."""
-    return replace(
+    """Fill what the caller left unset from this model's config entry. A model that cannot call tools gets none,
+    and any tool calls already made in the conversation as plain text."""
+    request = replace(
         request,
         max_tokens=request.max_tokens or model.max_tokens,
         temperature=request.temperature if request.temperature is not None else model.temperature,
     )
+    if not model.supports_tools and (request.tools or any(m["role"] == "tool" for m in request.messages)):
+        request = replace(request, tools=[], tool_choice=None, messages=flatten_tool_turns(request.messages))
+    return request

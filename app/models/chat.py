@@ -69,6 +69,11 @@ class ChatCompletionRequest(BaseModel):
     step_num: Optional[int] = Field(
         None, ge=0, description="Only with `store`: step_num of the stored rows (default: carried over from the thread's latest message)."
     )
+    use_tools: bool = Field(
+        True,
+        description="Let the agent call its tools (the ones wired to it in the n8n SMS handler, see GET /v1/agents). "
+        "false: the agent answers from its prompt alone.",
+    )
     temperature: Optional[float] = Field(None, ge=0, le=2)
     top_p: Optional[float] = Field(None, gt=0, le=1)
     top_k: Optional[int] = Field(
@@ -138,6 +143,19 @@ class StoredMessages(BaseModel):
     error: Optional[str] = None
 
 
+class ToolCallInfo(BaseModel):
+    """One tool call made while answering, in the order made."""
+
+    id: str
+    name: str
+    kind: str = Field(..., description="The n8n node it replaces: db (Supabase), code (Code tool) or http (HTTP Request tool).")
+    arguments: dict[str, Any]
+    ok: bool = Field(..., description="false when the tool failed, timed out or refused (see `error`).")
+    latency_ms: int
+    error: Optional[str] = None
+    dry_run: bool = Field(False, description="The tool changes data but tools.write_mode is dry_run: nothing was written.")
+
+
 class Choice(BaseModel):
     index: int = 0
     message: AssistantMessage
@@ -154,6 +172,10 @@ class ChatCompletionResponse(BaseModel):
     usage: Usage
     latency_ms: int
     fallback_used: bool = False
+    tools_used: list[str] = Field(
+        default_factory=list, description="Names of the tools called for this completion, each once, in first-use order."
+    )
+    tool_calls: list[ToolCallInfo] = Field(default_factory=list, description="Every tool call, with its arguments and outcome.")
     stored: Optional[StoredMessages] = None
 
 
@@ -174,6 +196,7 @@ class AgentInfo(BaseModel):
     label: str
     default: bool = False
     prompt_tokens: int = Field(..., description="Estimated size of the agent's instructions.")
+    tools: list[str] = Field(default_factory=list, description="Tools this agent can call (when the request allows them).")
 
 
 class AgentListResponse(BaseModel):

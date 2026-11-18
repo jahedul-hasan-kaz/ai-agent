@@ -36,7 +36,8 @@
       "model": "llama3.2:1b",
       "base_url": "http://localhost:11434/v1",
       "context_window": 32768,
-      "timeout": 120
+      "timeout": 120,
+      "supports_tools": false
     },
     {
       "id": "llama-70b",
@@ -47,5 +48,13 @@
       "api_key": "<OPENROUTER_API_KEY>",
       "base_url": "https://openrouter.ai/api/v1"
     }
-  ]
+  ],
+  "tools": {
+    "enabled": true,
+    "write_mode": "dry_run",
+    "max_iterations": 6,
+    "timeout": 15,
+    "disabled": [],
+    "marketcheck_api_key": "<MARKETCHECK_API_KEY>"
+  }
 }

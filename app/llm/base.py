@@ -1,14 +1,40 @@
 """Provider-neutral types every model backend speaks."""
+import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, AsyncIterator, Optional, Union
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Literal, Optional, Union
 
 from app.llm.settings import ModelConfig
 
 
+@dataclass(frozen=True)
+class ToolSpec:
+    """A function the model may call: its name, what it does and a JSON Schema for its arguments."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+@dataclass
+class ToolCall:
+    """One call the model asked for. `arguments` is already parsed; unparsable JSON lands in `arguments_error`."""
+
+    id: str
+    name: str
+    arguments: dict[str, Any]
+    arguments_error: Optional[str] = None
+
+
 @dataclass
 class LLMRequest:
-    messages: list[dict[str, str]]  # [{"role": ..., "content": ...}], system messages included
+    # Provider-neutral messages, system messages included:
+    #   {"role": "system" | "user" | "assistant", "content": str}
+    #   {"role": "assistant", "content": str, "tool_calls": [ToolCall, ...]}   the model asked for tools
+    #   {"role": "tool", "tool_call_id": str, "name": str, "content": str}      a tool's result
+    # An assistant turn may also carry "anthropic_blocks", the raw content Claude returned (thinking blocks must be
+    # sent back unchanged while it keeps calling tools); other providers ignore it.
+    messages: list[dict[str, Any]]
     temperature: Optional[float] = None
     top_p: Optional[float] = None
     top_k: Optional[int] = None
@@ -20,6 +46,9 @@ class LLMRequest:
     # Providers that cache explicitly (Anthropic) mark that prefix as cacheable; OpenAI and Ollama reuse a
     # matching prefix on their own, which is why the static text always comes first.
     cache_prefix: int = 0
+    tools: list[ToolSpec] = field(default_factory=list)
+    # "none" keeps the tools declared (a conversation holding tool calls needs them) but makes the model answer.
+    tool_choice: Optional[Literal["auto", "none"]] = None
 
 
 @dataclass
@@ -28,6 +57,8 @@ class LLMResult:
     finish_reason: Optional[str] = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    anthropic_blocks: Optional[list[dict[str, Any]]] = None  # see LLMRequest.messages
 
 
 @dataclass
@@ -51,6 +82,22 @@ class LLMError(Exception):
         self.status_code = status_code
         self.retryable = retryable
         self.code = code
+
+
+def flatten_tool_turns(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The same conversation as plain text turns, for a model that cannot take tool calls (a fallback that has
+    `supports_tools: false`): a call becomes a note on the assistant turn, a result a note on the next user turn."""
+    flat: list[dict[str, Any]] = []
+    for m in messages:
+        if m["role"] == "tool":
+            flat.append({"role": "user", "content": f"[Result of {m.get('name', 'tool')}]\n{m['content']}"})
+        elif m["role"] == "assistant" and m.get("tool_calls"):
+            calls = "\n".join(f"[Called {c.name}({json.dumps(c.arguments)})]" for c in m["tool_calls"])
+            text = (m.get("content") or "").strip()
+            flat.append({"role": "assistant", "content": f"{text}\n{calls}".strip()})
+        else:
+            flat.append({"role": m["role"], "content": m["content"]})
+    return flat
 
 
 def status_error(provider: str, status: int, message: str) -> LLMError:

@@ -3,14 +3,14 @@ import asyncio
 import json
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import AsyncIterator, Optional
 
 from loguru import logger
 
 from app.customer.context import build_customer_context
 from app.customer.store import CustomerRecords, CustomerStore
-from app.llm.base import LLMError, LLMRequest, StreamDone
+from app.llm.base import LLMError, LLMRequest, LLMResult, StreamDone
 from app.llm.model_manager import ModelManager
 from app.llm.settings import CustomerConfig, ModelConfig
 from app.models.chat import (
@@ -19,11 +19,14 @@ from app.models.chat import (
     ChatCompletionResponse,
     Choice,
     StoredMessages,
+    ToolCallInfo,
     Usage,
 )
 from app.rag.context import build_context
 from app.rag.retriever import Retriever, build_query
 from app.services.agent_prompts import CHARS_PER_TOKEN, estimate_tokens, get_agent, runtime_context
+from app.tools.base import Tool, ToolContext
+from app.tools.registry import ToolRun, ToolRunner, spec
 
 # Role markers and separators per message.
 _TOKENS_PER_MESSAGE = 4
@@ -38,6 +41,26 @@ class _Fit:
     history_tokens: int
     window: Optional[int] = None
     reserve: int = 0
+
+
+@dataclass
+class _Answer:
+    """The reply after any tool rounds: the last model turn plus everything spent getting there."""
+
+    model: ModelConfig
+    result: LLMResult
+    fallback_used: bool
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    runs: list[ToolRun] = field(default_factory=list)
+
+    @property
+    def tools_used(self) -> list[str]:
+        return list(dict.fromkeys(r.name for r in self.runs))
+
+    @property
+    def tool_calls(self) -> list[ToolCallInfo]:
+        return [ToolCallInfo(**vars(r)) for r in self.runs]
 
 
 def error_body(exc: LLMError) -> dict:
@@ -60,11 +83,16 @@ def error_body(exc: LLMError) -> dict:
 
 class ChatService:
     def __init__(
-        self, manager: ModelManager, retriever: Optional[Retriever] = None, customers: Optional[CustomerStore] = None
+        self,
+        manager: ModelManager,
+        retriever: Optional[Retriever] = None,
+        customers: Optional[CustomerStore] = None,
+        tools: Optional[ToolRunner] = None,
     ) -> None:
         self.manager = manager
         self.retriever = retriever
         self.customers = customers
+        self.tools = tools
 
     async def build_request(self, req: ChatCompletionRequest) -> LLMRequest:
         # Order matters. The agent prompt leads and never changes between requests, so providers can cache
@@ -197,28 +225,99 @@ class ChatService:
         logger.info("Stored exchange {} inbound={} outbound={}", done.channel, done.inbound_id, done.outbound_id)
         return StoredMessages(channel=done.channel, inbound_id=done.inbound_id, outbound_id=done.outbound_id)
 
+    async def _tooling(self, req: ChatCompletionRequest) -> tuple[Optional[ToolContext], dict[str, Tool]]:
+        """The tools the request's agent may call in this request (see app/tools/registry.py)."""
+        if self.tools is None or not self.tools.settings.enabled or not req.use_tools:
+            return None, {}
+        primary = self.manager.resolve(req.model, req.model_type)
+        if not primary.supports_tools:
+            logger.info("tools off: model {} has supports_tools=false", primary.id)
+            return None, {}
+        agent = get_agent(req.agent)
+        turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
+        ctx = await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns)
+        offered, skipped = self.tools.offered(agent.id, ctx)
+        if offered or skipped:
+            logger.info(
+                "tools agent={} offered=[{}]{}", agent.id, ", ".join(t.name for t in offered),
+                "".join(f" skipped {name}: {why};" for name, why in skipped.items()),
+            )
+        return ctx, {t.name: t for t in offered}
+
+    async def _answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
+        """Ask the model; while it calls tools, run them and ask again with their results. After
+        tools.max_iterations rounds of calls the model must answer (tool_choice=none)."""
+        request = await self.build_request(req)
+        ctx, tools = tooling or await self._tooling(req)
+        if tools:
+            request = replace(request, tools=[spec(t) for t in tools.values()])
+        answer: Optional[_Answer] = None
+        runs: list[ToolRun] = []
+        rounds = 0
+        while True:
+            final_round = bool(request.tools) and rounds >= self.tools.settings.max_iterations
+            if final_round:
+                request = replace(request, tool_choice="none")
+            try:
+                done = await self.manager.complete(request, req.model, req.model_type)
+            except LLMError as exc:
+                if request.tools and not runs and _rejects_tools(exc):
+                    # Some servers (and small local models) refuse `tools` outright: answer without them.
+                    logger.warning("model rejected tools ({}); answering without them", exc.message[:200])
+                    request, tools = replace(request, tools=[], tool_choice=None), {}
+                    continue
+                raise
+            answer = _Answer(
+                model=done.model,
+                result=done.result,
+                fallback_used=done.fallback_used or (answer.fallback_used if answer else False),
+                prompt_tokens=(answer.prompt_tokens if answer else 0) + done.result.prompt_tokens,
+                completion_tokens=(answer.completion_tokens if answer else 0) + done.result.completion_tokens,
+                runs=runs,
+            )
+            if not done.result.tool_calls or not tools or final_round:
+                break
+            rounds += 1
+            request.messages.append({
+                "role": "assistant", "content": done.result.content, "tool_calls": done.result.tool_calls,
+                "anthropic_blocks": done.result.anthropic_blocks,
+            })
+            # In order, one at a time: a later call may depend on an earlier one (Validate, then Save).
+            for call in done.result.tool_calls:
+                content, run = await self.tools.run(tools, call, ctx)
+                runs.append(run)
+                request.messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": content})
+        if not answer.result.content.strip():
+            raise LLMError(f"{answer.model.id} kept calling tools without answering", code="empty_response")
+        return answer
+
     async def complete(self, req: ChatCompletionRequest) -> ChatCompletionResponse:
         started = time.perf_counter()
-        done = await self.manager.complete(await self.build_request(req), req.model, req.model_type)
+        answer = await self._answer(req)
         latency_ms = _elapsed_ms(started)
-        usage = Usage.of(done.result.prompt_tokens, done.result.completion_tokens)
-        reply = done.result.content.strip()
+        usage = Usage.of(answer.prompt_tokens, answer.completion_tokens)
+        reply = answer.result.content.strip()
         stored = await self._store(req, reply)
-        logger.info("chat completion model={} tokens={} latency_ms={}", done.model.id, usage.total_tokens, latency_ms)
+        logger.info(
+            "chat completion model={} tokens={} latency_ms={} tools_used={}",
+            answer.model.id, usage.total_tokens, latency_ms, ",".join(answer.tools_used) or "none",
+        )
         return ChatCompletionResponse(
             id=_completion_id(),
             created=int(time.time()),
-            model=done.model.id,
-            model_type=done.model.type,
+            model=answer.model.id,
+            model_type=answer.model.type,
             choices=[
                 Choice(
                     message=AssistantMessage(content=reply),
-                    finish_reason=done.result.finish_reason,
+                    finish_reason=answer.result.finish_reason,
                 )
             ],
             usage=usage,
             latency_ms=latency_ms,
-            fallback_used=done.fallback_used,
+            fallback_used=answer.fallback_used,
+            tools_used=answer.tools_used,
+            tool_calls=answer.tool_calls,
             stored=stored,
         )
 
@@ -228,7 +327,10 @@ class ChatService:
         return self._sse(req, primary)
 
     async def _sse(self, req: ChatCompletionRequest, primary: ModelConfig) -> AsyncIterator[str]:
-        """OpenAI-style `chat.completion.chunk` events, ending with `data: [DONE]`."""
+        """OpenAI-style `chat.completion.chunk` events, ending with `data: [DONE]`.
+
+        When the agent has tools, the tool rounds run first and the finished reply is sent as one content chunk:
+        a reply cannot start streaming before the model has decided whether it still needs a tool."""
         started, completion_id, created = time.perf_counter(), _completion_id(), int(time.time())
 
         def chunk(model: ModelConfig, delta: dict, finish_reason=None) -> dict:
@@ -241,28 +343,58 @@ class ChatService:
                 "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
             }
 
-        first, parts = True, []
-        request = await self.build_request(req)
+        def final_chunk(model: ModelConfig, finish_reason, prompt_tokens, completion_tokens, fallback_used,
+                        tools_used: list[str], tool_calls: list[ToolCallInfo]) -> dict:
+            final = chunk(model, {}, finish_reason or "stop")
+            final["usage"] = Usage.of(prompt_tokens, completion_tokens).model_dump()
+            final["latency_ms"] = _elapsed_ms(started)
+            final["fallback_used"] = fallback_used
+            final["tools_used"] = tools_used
+            final["tool_calls"] = [c.model_dump() for c in tool_calls]
+            return final
+
         try:
-            async for model, item in self.manager.stream(request, primary.id):
-                if isinstance(item, StreamDone):
-                    final = chunk(model, {}, item.finish_reason or "stop")
-                    final["usage"] = Usage.of(item.prompt_tokens, item.completion_tokens).model_dump()
-                    final["latency_ms"] = _elapsed_ms(started)
-                    final["fallback_used"] = model.id != primary.id
-                    stored = await self._store(req, "".join(parts).strip())
-                    if stored:
-                        final["stored"] = stored.model_dump()
-                    yield _event(final)
-                    continue
-                if first:
-                    yield _event(chunk(model, {"role": "assistant", "content": ""}))
-                    first = False
-                parts.append(item)
-                yield _event(chunk(model, {"content": item}))
+            tooling = await self._tooling(req)
+            if tooling[1]:
+                answer = await self._answer(req, tooling)
+                reply = answer.result.content.strip()
+                yield _event(chunk(answer.model, {"role": "assistant", "content": ""}))
+                yield _event(chunk(answer.model, {"content": reply}))
+                final = final_chunk(
+                    answer.model, answer.result.finish_reason, answer.prompt_tokens, answer.completion_tokens,
+                    answer.fallback_used, answer.tools_used, answer.tool_calls,
+                )
+                stored = await self._store(req, reply)
+                if stored:
+                    final["stored"] = stored.model_dump()
+                yield _event(final)
+            else:
+                first, parts = True, []
+                request = await self.build_request(req)
+                async for model, item in self.manager.stream(request, primary.id):
+                    if isinstance(item, StreamDone):
+                        final = final_chunk(
+                            model, item.finish_reason, item.prompt_tokens, item.completion_tokens,
+                            model.id != primary.id, [], [],
+                        )
+                        stored = await self._store(req, "".join(parts).strip())
+                        if stored:
+                            final["stored"] = stored.model_dump()
+                        yield _event(final)
+                        continue
+                    if first:
+                        yield _event(chunk(model, {"role": "assistant", "content": ""}))
+                        first = False
+                    parts.append(item)
+                    yield _event(chunk(model, {"content": item}))
         except LLMError as exc:
             yield _event(error_body(exc))
         yield "data: [DONE]\n\n"
+
+
+def _rejects_tools(exc: LLMError) -> bool:
+    """A 400 that names tools: the model or server does not do function calling."""
+    return exc.code == "invalid_request" and "tool" in exc.message.lower()
 
 
 def _completion_id() -> str:

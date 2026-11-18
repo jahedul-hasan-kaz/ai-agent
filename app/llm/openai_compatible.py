@@ -1,6 +1,7 @@
 """
 Any backend that speaks the OpenAI chat completions protocol (`protocol: "openai"`).
 """
+import json
 from typing import Any, AsyncIterator
 
 import openai
@@ -13,6 +14,7 @@ from app.llm.base import (
     LLMError,
     StreamDone,
     StreamItem,
+    ToolCall,
     connection_error,
     status_error,
     timeout_error,
@@ -33,7 +35,14 @@ class OpenAICompatibleProvider(LLMProvider):
         )
 
     def _params(self, request: LLMRequest) -> dict[str, Any]:
-        params: dict[str, Any] = {"model": self.settings.model, "messages": request.messages}
+        params: dict[str, Any] = {"model": self.settings.model, "messages": _wire_messages(request.messages)}
+        if request.tools:
+            params["tools"] = [
+                {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.parameters}}
+                for t in request.tools
+            ]
+            if request.tool_choice:
+                params["tool_choice"] = request.tool_choice
         if request.temperature is not None:
             params["temperature"] = request.temperature
         if request.top_p is not None:
@@ -85,6 +94,7 @@ class OpenAICompatibleProvider(LLMProvider):
             finish_reason=choice.finish_reason,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
+            tool_calls=[_tool_call(c) for c in (choice.message.tool_calls or []) if getattr(c, "function", None)],
         )
 
     async def stream(self, request: LLMRequest) -> AsyncIterator[StreamItem]:
@@ -119,3 +129,33 @@ class OpenAICompatibleProvider(LLMProvider):
 
     async def aclose(self) -> None:
         await self._client.close()
+
+
+def _wire_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Neutral messages (see LLMRequest) in the chat completions shape."""
+    wire = []
+    for m in messages:
+        if m["role"] == "tool":
+            wire.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
+        elif m["role"] == "assistant" and m.get("tool_calls"):
+            wire.append({
+                "role": "assistant",
+                "content": m.get("content") or None,
+                "tool_calls": [
+                    {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": json.dumps(c.arguments)}}
+                    for c in m["tool_calls"]
+                ],
+            })
+        else:
+            wire.append({"role": m["role"], "content": m["content"]})
+    return wire
+
+
+def _tool_call(call: Any) -> ToolCall:
+    raw = call.function.arguments or "{}"
+    try:
+        arguments = json.loads(raw)
+        error = None if isinstance(arguments, dict) else "arguments are not a JSON object"
+    except json.JSONDecodeError as exc:
+        arguments, error = None, f"arguments are not valid JSON: {exc.msg}"
+    return ToolCall(call.id, call.function.name, arguments if isinstance(arguments, dict) else {}, error)

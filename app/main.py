@@ -16,6 +16,7 @@ from app.rag.retriever import Retriever
 from app.rag.store import DocStore
 from app.services.agent_prompts import DEFAULT_AGENT, agents
 from app.services.chat_service import ChatService, error_body
+from app.tools.registry import ToolRunner
 
 
 @asynccontextmanager
@@ -39,7 +40,8 @@ async def lifespan(app: FastAPI):
                            m.id, m.context_window, largest)
     retriever = await _start_retriever(agent_config)
     customers = await _start_customers(agent_config)
-    app.state.chat_service = ChatService(manager, retriever, customers)
+    tools = await _start_tools(agent_config, retriever)
+    app.state.chat_service = ChatService(manager, retriever, customers, tools)
     app.state.doc_store = DocStore(retriever) if retriever else None
     app.state.cors_origins = agent_config.playground.cors_origins if agent_config.playground.enabled else []
 
@@ -50,6 +52,8 @@ async def lifespan(app: FastAPI):
         await retriever.aclose()
     if customers:
         await customers.aclose()
+    if tools:
+        await tools.aclose()
 
 
 def _pg_dsn() -> str:
@@ -86,6 +90,19 @@ async def _start_customers(agent_config) -> CustomerStore | None:
     store = CustomerStore(agent_config.customer, dsn)
     await store.start()
     return store
+
+
+async def _start_tools(agent_config, retriever) -> ToolRunner | None:
+    """The agents' tools (app/tools). Without the database only Validate_Appointment can run."""
+    settings = agent_config.tools
+    if not settings.enabled:
+        logger.warning("tools are disabled — agents answer from their prompts alone.")
+        return None
+    runner = ToolRunner(settings, _pg_dsn(), retriever)
+    await runner.start()
+    if settings.write_mode == "dry_run":
+        logger.warning("tools.write_mode=dry_run — tools that change data report what they would write and write nothing.")
+    return runner
 
 
 is_prod = config.ENV == EnvEnum.prod
@@ -151,9 +168,10 @@ async def health(request: Request) -> dict:
     service = request.app.state.chat_service
     rag = "off" if service.retriever is None else ("ready" if service.retriever.ready else "unavailable")
     customers = "off" if service.customers is None else ("ready" if service.customers.ready else "unavailable")
+    tools = "off" if service.tools is None else (service.tools.settings.write_mode if service.tools.ready else "no_database")
     return {
         "status": "ok", "env": config.ENV.value, "models": [m.id for m in service.manager.models], "rag": rag,
-        "customer_records": customers,
+        "customer_records": customers, "tools": tools,
     }
 
 

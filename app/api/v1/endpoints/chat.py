@@ -14,6 +14,7 @@ from app.models.chat import (
 )
 from app.services.agent_prompts import DEFAULT_AGENT, agents
 from app.services.chat_service import ChatService
+from app.tools.registry import agent_tools
 
 router = APIRouter()
 
@@ -55,7 +56,10 @@ async def list_agents():
     """Agents a request can name in `agent`, one per app/prompts/agents/<agent>_system_instr.md."""
     return AgentListResponse(
         data=[
-            AgentInfo(id=a.id, label=a.label, default=a.id == DEFAULT_AGENT, prompt_tokens=a.tokens)
+            AgentInfo(
+                id=a.id, label=a.label, default=a.id == DEFAULT_AGENT, prompt_tokens=a.tokens,
+                tools=[t.name for t in agent_tools(a.id)],
+            )
             for a in agents().values()
         ]
     )
