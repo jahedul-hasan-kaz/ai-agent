@@ -10,15 +10,23 @@ A failed call moves on to the model's configured `fallbacks`, unless the
 request itself was rejected (bad params), which no other model would fix.
 """
 import asyncio
+import json
 from dataclasses import dataclass, replace
 from typing import AsyncIterator, Callable, Optional
 
 from loguru import logger
 
 from app.llm.anthropic_provider import AnthropicProvider
-from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamItem, flatten_tool_turns
+from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamDone, StreamItem, flatten_tool_turns
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.settings import AgentConfig, ModelConfig, ModelType
+from app.services.agent_prompts import CHARS_PER_TOKEN
+
+# The truncation guard: a server that reports far fewer prompt tokens than were sent cut the prompt to fit its
+# context length (Ollama does this silently, keeping only part of the input). The estimate overcounts
+# (CHARS_PER_TOKEN errs high), so only a large gap is reported, and only for prompts big enough to matter.
+_TRUNCATED_BELOW = 0.5
+_TRUNCATION_MIN_TOKENS = 1000
 
 
 def build_provider(settings: ModelConfig) -> LLMProvider:
@@ -118,7 +126,9 @@ class ModelManager:
         failures: list[tuple[str, LLMError]] = []
         for index, model in enumerate(chain):
             try:
-                result = await self._providers[model.id].complete(_with_defaults(request, model))
+                sent = _with_defaults(request, model)
+                result = await self._providers[model.id].complete(sent)
+                warn_if_truncated(model, sent, result.prompt_tokens)
                 if not result.content.strip() and not result.tool_calls:
                     raise LLMError(f"{model.id} returned an empty reply", code="empty_response")
                 return Completion(model=model, result=result, fallback_used=index > 0)
@@ -138,8 +148,11 @@ class ModelManager:
         for index, model in enumerate(chain):
             emitted = False
             try:
-                async for item in self._providers[model.id].stream(_with_defaults(request, model)):
+                sent = _with_defaults(request, model)
+                async for item in self._providers[model.id].stream(sent):
                     emitted = True
+                    if isinstance(item, StreamDone):
+                        warn_if_truncated(model, sent, item.prompt_tokens)
                     yield model, item
                 return
             except LLMError as exc:
@@ -172,6 +185,43 @@ def _combined(failures: list[tuple[str, LLMError]]) -> LLMError:
     last = failures[-1][1]
     attempts = "; ".join(f"{model_id}: {exc.message}" for model_id, exc in failures)
     return LLMError(f"All {len(failures)} models failed — {attempts}", last.status_code, last.retryable, last.code)
+
+
+def sent_tokens(request: LLMRequest) -> int:
+    """Rough size of what goes to the model: every message, tool call and tool definition."""
+    chars = 0
+    for m in request.messages:
+        content = m.get("content")
+        chars += len(content) if isinstance(content, str) else len(json.dumps(content, default=str)) if content else 0
+        for call in m.get("tool_calls") or ():
+            chars += len(call.name) + len(json.dumps(call.arguments, default=str))
+    for tool in request.tools:
+        chars += len(tool.name) + len(tool.description) + len(json.dumps(tool.parameters))
+    return int(chars / CHARS_PER_TOKEN)
+
+
+def warn_if_truncated(model: ModelConfig, request: LLMRequest, prompt_tokens: int) -> bool:
+    """Log when the server reports far fewer prompt tokens than were sent: it cut the prompt, so the model
+    answered without part of its instructions. Not checked for Anthropic, which rejects an oversized prompt
+    instead of cutting it, and whose input_tokens leave out the cached prefix."""
+    if model.protocol == "anthropic" or prompt_tokens <= 0:
+        return False
+    sent = sent_tokens(request)
+    if sent < _TRUNCATION_MIN_TOKENS or prompt_tokens >= sent * _TRUNCATED_BELOW:
+        return False
+    fix = (
+        "raise the server's context length (OLLAMA_CONTEXT_LENGTH, or num_ctx for this model)"
+        if model.provider == "ollama"
+        else "raise the server's context length (e.g. vLLM --max-model-len)"
+    )
+    logger.warning(
+        "model {} reported {} prompt tokens for a prompt of ~{}: the server likely cut the prompt to fit its "
+        "context length, so the model answered without part of its instructions. To fix, {} and set this "
+        "model's context_window to match{}.",
+        model.id, prompt_tokens, sent, fix,
+        f" (context_window is {model.context_window})" if model.context_window else " (context_window is not set)",
+    )
+    return True
 
 
 def _with_defaults(request: LLMRequest, model: ModelConfig) -> LLMRequest:
