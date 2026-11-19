@@ -35,6 +35,7 @@ from app.tools.base import (
     ToolFailure,
 )
 from app.tools.escalation import ESCALATE_TO_HUMAN, SUPPRESS_LEAD
+from app.services.node_data import DATABASE_NODES
 from app.tools.inventory import SEARCH_INVENTORY
 from app.tools.records import GET_SMS_CONVERSATION_LOG, KNOWLEDGE_BASE_SEARCH, UPDATE_MILEAGE
 
@@ -76,17 +77,16 @@ def agent_tools(agent_id: str) -> list[Tool]:
     return [ALL_TOOLS[name] for name in AGENT_TOOLS.get(agent_id, ())]
 
 
-# Nodes whose output is a list of rows rather than one object.
-LIST_NODES = {"Get Recent SMS History"}
-
-
 def agent_inputs(agent_id: str, prompt_inputs: dict[str, list[str]]) -> list[dict[str, Any]]:
-    """The upstream workflow nodes an agent reads, for node_data: its prompt's expressions, then its tools'
-    Tool Context fields. [{node, fields, list_of_rows, used_by}]."""
+    """The computed workflow nodes an agent reads, for node_data: its prompt's expressions, then its tools' Tool
+    Context fields. Database-backed nodes are left out: the gateway reads those itself.
+    [{node, fields, list_of_rows, used_by}]."""
     out: dict[str, dict[str, Any]] = {}
 
     def add(node: str, path: str, user: str) -> None:
-        entry = out.setdefault(node, {"node": node, "fields": [], "list_of_rows": node in LIST_NODES, "used_by": []})
+        if node in DATABASE_NODES:
+            return
+        entry = out.setdefault(node, {"node": node, "fields": [], "list_of_rows": False, "used_by": []})
         if path and path not in entry["fields"]:
             entry["fields"].append(path)
         if user not in entry["used_by"]:
@@ -172,10 +172,8 @@ class ToolRunner:
         for need in tool.needs:
             if need == NEEDS_TENANT and ctx.tenant_id is None:
                 return "no tenant_id on the request"
-            if need == NEEDS_CUSTOMER and not ctx.has_supplied_lead and (
-                ctx.tenant_id is None or not (ctx.sms_thread_key or ctx.email_thread_key)
-            ):
-                return "no tenant_id with sms_thread_key / email_thread_key (or node_data['Lookup Lead']), so no lead to act on"
+            if need == NEEDS_CUSTOMER and (ctx.tenant_id is None or not (ctx.sms_thread_key or ctx.email_thread_key)):
+                return "no tenant_id with sms_thread_key / email_thread_key, so no lead to act on"
             if need == NEEDS_SMS and (ctx.tenant_id is None or not ctx.sms_thread_key):
                 return "no tenant_id with sms_thread_key"
             if need == NEEDS_DB and ctx.pool is None:

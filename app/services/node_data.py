@@ -1,15 +1,32 @@
 """
-Values the n8n SMS handler's upstream nodes hand to its agents and tools, supplied on a request as `node_data`.
+Values the n8n SMS handler's upstream nodes hand to its agents and tools.
 
 In the workflow an agent's prompt and its tools read other nodes directly (`$('Get tenant').first().json.slug`,
-the Tool Context node's `classifier: $('Intent Classifier').first().json`). Here a caller can pass those nodes'
-outputs as `node_data = {"<node name>": <that node's json>}`. Whatever is supplied wins; anything left out keeps
-the gateway's own behaviour (a database lookup, a value derived from the messages, or the prompt's fallback).
+the Tool Context node's `classifier: $('Intent Classifier').first().json`). Here:
+
+* database-backed nodes (DATABASE_NODES: the tenant, lead, vehicle, SMS history, ...) are read by the gateway from
+  tenant_id and the thread key, never supplied;
+* computed nodes (the Intent Classifier, the clock, the combined message, ...) can be supplied on a request as
+  `node_data = {"<node name>": <that node's json>}`; anything left out keeps the gateway's own behaviour (a value
+  derived from the messages, or the prompt's fallback).
 """
 import re
 from typing import Any, Iterable, Optional
 
 NodeData = dict[str, Any]
+
+# Nodes that read or write the backend's database. The gateway reads these itself (tenant_id, thread key), so a
+# request never supplies them: Supabase "get" nodes and REST/RPC calls in the n8n SMS handler.
+DATABASE_NODES = frozenset({
+    "Get tenant",  # tenants
+    "Get tenant emails & phone",  # tenants
+    "Lookup Lead",  # leads
+    "Lookup Lead Vehicle",  # rpc resolve_thread_vehicle
+    "Get Recent SMS History",  # sms_log
+    "Insert Log",  # sms_log (write)
+    "Get Equity Context",  # rpc get_lead_equity_context
+    "Load Conversation State",  # sms_conversation_state
+})
 
 # $('Node').first().json.a?.b  /  $('Node').item.json.a
 _NODE_REF = re.compile(r"\$\('([^']+)'\)\.(?:first\(\)|last\(\)|item)\.json((?:\??\.[A-Za-z_][A-Za-z0-9_]*)+)")

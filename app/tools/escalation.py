@@ -373,12 +373,10 @@ ESCALATE_TO_HUMAN = Tool(
     run=escalate_to_human,
     needs=(NEEDS_CUSTOMER, NEEDS_DB),
     writes=True,
-    # n8n Tool Context fields this tool reads (escalate_to_human.js).
+    # n8n Tool Context fields this tool reads from computed nodes (escalate_to_human.js). Its database-backed ones
+    # (Lookup Lead, Get Recent SMS History, Get tenant emails & phone, Insert Log) are read from the database.
     inputs=(
-        ("Lookup Lead", "id"), ("Normalize Phone", "text"), ("Combine messages", "combinedMessage"),
-        ("Get Recent SMS History", ""), ("Get tenant emails & phone", "hours_of_operation.timezone"),
-        ("Get tenant emails & phone", "timezone"), ("Insert Log", "id"), ("Insert Log", "tenant_id"),
-        ("Insert Log", "lead_id"), ("Insert Log", "direction"),
+        ("Normalize Phone", "text"), ("Combine messages", "combinedMessage"),
         ("Intent Classifier", "intent"), ("Intent Classifier", "complaint_signals"),
         ("Intent Classifier", "internal_employee"), ("Intent Classifier", "wrong_owner"),
         ("Intent Classifier", "deceased"), ("Intent Classifier", "explicit_decline_or_deferral"),

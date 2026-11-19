@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.llm.settings import ModelType
+from app.services.node_data import DATABASE_NODES
 
 _MAX_NODE_DATA_CHARS = 200_000
 
@@ -79,11 +80,12 @@ class ChatCompletionRequest(BaseModel):
     )
     node_data: Optional[dict[str, Any]] = Field(
         None,
-        description="Outputs of the n8n SMS handler's upstream nodes that the agent's prompt and tools read, keyed by "
-        "node name, each shaped like that node's `$('<node>').first().json` (\"Get Recent SMS History\" is a list of "
-        "rows). E.g. {\"Get tenant emails & phone\": {\"main_phone\": \"+15551234567\"}, \"Intent Classifier\": "
-        "{\"intent\": \"inventory\"}}. A supplied value wins; anything left out is looked up or derived as usual. "
-        "GET /v1/agents lists the nodes and fields each agent reads.",
+        description="Outputs of the n8n SMS handler's computed upstream nodes that the agent's prompt and tools read, "
+        "keyed by node name, each shaped like that node's `$('<node>').first().json`. E.g. {\"Intent Classifier\": "
+        "{\"intent\": \"inventory\"}, \"Get Current Date/Time\": {\"date\": \"2026-11-19\"}}. A supplied value wins; "
+        "anything left out is derived as usual. Database-backed nodes (the tenant, lead, vehicle, SMS history, ...) are "
+        "not accepted: the gateway reads them itself from tenant_id and the thread key. GET /v1/agents lists the "
+        "nodes and fields each agent reads.",
     )
     temperature: Optional[float] = Field(None, ge=0, le=2)
     top_p: Optional[float] = Field(None, gt=0, le=1)
@@ -121,6 +123,12 @@ class ChatCompletionRequest(BaseModel):
     def _node_data_shape(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if not value:
             return None
+        database = sorted(set(value) & DATABASE_NODES)
+        if database:
+            raise ValueError(
+                f"node_data cannot supply {', '.join(database)}: database-backed nodes are read by the gateway itself "
+                "from tenant_id and sms_thread_key / email_thread_key"
+            )
         for name, output in value.items():
             if not isinstance(output, (dict, list)):
                 raise ValueError(f"node_data['{name}'] must be the node's JSON object (or a list of rows)")
@@ -135,13 +143,6 @@ class ChatCompletionRequest(BaseModel):
             raise ValueError("tenant_id is required with sms_thread_key or email_thread_key")
         if self.store and bool(self.sms_thread_key) == bool(self.email_thread_key):
             raise ValueError("store needs exactly one of sms_thread_key or email_thread_key")
-        # A supplied lead acts on a dealership's records, so it must belong to the request's dealership.
-        lead = (self.node_data or {}).get("Lookup Lead")
-        if isinstance(lead, dict) and lead:
-            if self.tenant_id is None:
-                raise ValueError("tenant_id is required with node_data['Lookup Lead']")
-            if lead.get("tenant_id") not in (None, "") and str(lead["tenant_id"]) != str(self.tenant_id):
-                raise ValueError("node_data['Lookup Lead'].tenant_id does not match tenant_id")
         return self
 
 

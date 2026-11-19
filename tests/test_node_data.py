@@ -1,5 +1,6 @@
-"""node_data: outputs of the n8n workflow's upstream nodes supplied on a request, read by the agent's prompt and its
-tools the way the workflow reads those nodes; anything not supplied keeps the gateway's own behaviour."""
+"""Workflow node values: the database-backed nodes (tenant, lead, vehicle, SMS history, ...) are read by the gateway
+itself; the computed ones (Intent Classifier, clock, combined message, ...) can be supplied as `node_data`. Both
+reach the agent's prompt and tools the way the n8n workflow hands them over."""
 from datetime import datetime, timezone
 
 import pytest
@@ -8,106 +9,100 @@ from pydantic import ValidationError
 from app.llm.settings import ToolsConfig
 from app.models.chat import ChatCompletionRequest
 from app.services.agent_prompts import get_agent, runtime_context
+from app.services.chat_service import ChatService
+from app.services.node_data import DATABASE_NODES
 from app.tools.base import ToolContext
 from app.tools.escalation import escalate_to_human, protected_close_category
-from app.tools.registry import ToolRunner, agent_inputs
+from app.tools.registry import agent_inputs
 
 from tests.test_tools import client, providers  # noqa: F401 - fixtures
 
 TENANT = "22222222-2222-2222-2222-222222222222"
-LEAD_ID = "11111111-1111-1111-1111-111111111111"
+LEAD = {"id": "11111111-1111-1111-1111-111111111111", "tenant_id": TENANT, "first_name": "Sam", "current_cadence_id": None}
 ARGS = {"reason": "wants a person", "category": "other", "urgency": "normal"}
 
 
-def _ctx(node_data: dict, text: str = "Can someone call me about the RAV4?", **kw) -> ToolContext:
-    return ToolContext(settings=ToolsConfig(), tenant_id=TENANT, sms_thread_key=None, email_thread_key=None,
-                       turns=[{"role": "user", "content": text}], node_data=node_data, **kw)
+def _ctx(node_data: dict, text: str = "Can someone call me about the RAV4?", **cache) -> ToolContext:
+    """A context whose database lookups are already answered (as if read from the database)."""
+    ctx = ToolContext(settings=ToolsConfig(), tenant_id=TENANT, sms_thread_key="+15551234567", email_thread_key=None,
+                      turns=[{"role": "user", "content": text}], node_data=node_data)
+    ctx._cache.update({"lead": LEAD, "cadence": {}, "saved_inbound": None, **cache})
+    return ctx
 
 
-LEAD = {"Lookup Lead": {"id": LEAD_ID, "tenant_id": TENANT, "first_name": "Sam"}}
+# ---- which nodes are inputs -----------------------------------------------------------------------------------
+
+
+def test_only_computed_nodes_are_inputs():
+    inputs = {i["node"]: i for i in agent_inputs("inventory", get_agent("inventory").inputs())}
+    assert set(inputs) == {"Get Current Date/Time", "Intent Classifier", "Normalize Phone", "Combine messages"}
+    assert inputs["Get Current Date/Time"]["used_by"] == ["prompt"]
+    assert inputs["Intent Classifier"]["used_by"] == ["Escalate_To_Human"]
+    for agent in ("general", "scheduling", "value_data_collection", "service_trade_reply"):
+        assert not {i["node"] for i in agent_inputs(agent, get_agent(agent).inputs())} & DATABASE_NODES
+
+
+def test_agents_endpoint_lists_inputs(client):  # noqa: F811
+    data = {a["id"]: a for a in client.get("/v1/agents").json()["data"]}
+    nodes = {i["node"] for i in data["inventory"]["inputs"]}
+    assert "Intent Classifier" in nodes and "Lookup Lead" not in nodes
+
+
+def test_request_rejects_database_nodes():
+    base = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "tenant_id": TENANT}
+    assert ChatCompletionRequest(**base, node_data={}).node_data is None
+    assert ChatCompletionRequest(**base, node_data={"Intent Classifier": {"intent": "inventory"}}).node_data
+    with pytest.raises(ValidationError, match="database-backed"):
+        ChatCompletionRequest(**base, node_data={"Lookup Lead": {"id": LEAD["id"]}})
+    with pytest.raises(ValidationError, match="JSON object"):
+        ChatCompletionRequest(**base, node_data={"Intent Classifier": "inventory"})
 
 
 # ---- prompt ---------------------------------------------------------------------------------------------------
 
 
-def test_supplied_nodes_fill_the_prompt_and_the_rest_keep_their_fallback():
+async def test_database_nodes_fill_the_prompt_from_the_database():
+    tenant = {"slug": "koons", "main_phone": "+15550001111", "hours_of_operation": {"timezone": "America/Chicago"}}
+    vehicle = {"model": "Highlander"}
+    ctx = _ctx({}, tenant=tenant, vehicle=vehicle)
+    nodes = await ChatService(None)._database_nodes(get_agent("inventory"), ctx)
+    assert nodes["Get tenant"]["slug"] == "koons" and nodes["Lookup Lead"]["first_name"] == "Sam"
+    text = get_agent("inventory").render(nodes)
+    assert "+15550001111" in text and "our main number" not in text and "koons" in text and "Highlander" in text
+    assert "America/Chicago" in runtime_context(node_data=nodes)
+
+
+async def test_no_lead_or_database_keeps_the_fallbacks():
     agent = get_agent("inventory")
-    assert agent.render(None) == agent.text and agent.render({"Unrelated": {}}) == agent.text
-    assert "our main number" in agent.text
-    text = agent.render({"Get tenant emails & phone": {"main_phone": "+15550001111"}, "Get tenant": {"slug": "koons"}})
-    assert "+15550001111" in text and "our main number" not in text and "koons" in text
-    assert "there" in text  # Lookup Lead.first_name not supplied: its fallback stays
-    assert "Sam" in agent.render(LEAD)
+    no_thread = ToolContext(settings=ToolsConfig(), tenant_id=TENANT, sms_thread_key=None, email_thread_key=None, turns=[])
+    assert await ChatService(None)._database_nodes(agent, no_thread) == {}  # no database, no thread key
+    assert agent.render({}) == agent.text and "our main number" in agent.text
 
 
-def test_runtime_context_takes_the_supplied_clock_and_timezone():
+def test_supplied_clock_reaches_the_prompt():
     now = datetime(2026, 11, 19, 15, 0, tzinfo=timezone.utc)
-    ctx = runtime_context(now, node_data={"Get tenant emails & phone": {"hours_of_operation": {"timezone": "America/Chicago"}}})
-    assert "9:00 AM (America/Chicago)" in ctx
     given = runtime_context(now, node_data={"Get Current Date/Time": {"date": "2026-01-02", "time_12h": "8:15 AM", "day_of_week": "Friday"}})
     assert "Current date: 2026-01-02" in given and "8:15 AM" in given and "Day of week: Friday" in given
 
 
-def test_inventory_agent_lists_the_nodes_it_reads():
-    inputs = {i["node"]: i for i in agent_inputs("inventory", get_agent("inventory").inputs())}
-    assert inputs["Get tenant emails & phone"]["used_by"] == ["prompt", "Escalate_To_Human"]
-    assert "main_phone" in inputs["Get tenant emails & phone"]["fields"]
-    assert inputs["Intent Classifier"]["used_by"] == ["Escalate_To_Human"]
-    assert inputs["Get Recent SMS History"]["list_of_rows"] is True
-    assert {"Insert Log", "Lookup Lead", "Normalize Phone", "Combine messages", "Get Current Date/Time"} <= set(inputs)
-
-
-def test_agents_endpoint_lists_inputs(client):  # noqa: F811
-    data = {a["id"]: a for a in client.get("/v1/agents").json()["data"]}
-    assert any(i["node"] == "Intent Classifier" for i in data["inventory"]["inputs"])
-
-
 def test_node_data_reaches_the_models_prompt(client, providers):  # noqa: F811
-    body = {"model": "claude", "agent": "inventory", "tenant_id": TENANT, "use_tools": False,
-            "messages": [{"role": "user", "content": "Are you a bot?"}],
-            "node_data": {"Get tenant emails & phone": {"main_phone": "+15550001111"}}}
+    body = {"model": "claude", "agent": "inventory", "use_tools": False,
+            "messages": [{"role": "user", "content": "What day is it?"}],
+            "node_data": {"Get Current Date/Time": {"date": "2031-02-03", "day_of_week": "Monday"}}}
     assert client.post("/v1/chat/completions", json=body).status_code == 200
     system = providers["claude"].requests[-1].messages[0]["content"]
-    assert "+15550001111" in system and "our main number" not in system
-
-
-# ---- request --------------------------------------------------------------------------------------------------
-
-
-def test_request_validates_node_data():
-    base = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "tenant_id": TENANT}
-    assert ChatCompletionRequest(**base, node_data={}).node_data is None
-    with pytest.raises(ValidationError, match="JSON object"):
-        ChatCompletionRequest(**base, node_data={"Get tenant": "koons"})
-    with pytest.raises(ValidationError, match="does not match tenant_id"):
-        ChatCompletionRequest(**base, node_data={"Lookup Lead": {"id": LEAD_ID, "tenant_id": "33333333-3333-3333-3333-333333333333"}})
-    with pytest.raises(ValidationError, match="tenant_id is required"):
-        ChatCompletionRequest(model="m", messages=base["messages"], node_data=LEAD)
+    assert "2031-02-03" in system
 
 
 # ---- tool context ---------------------------------------------------------------------------------------------
 
 
-async def test_tool_context_reads_supplied_nodes_first():
-    history = [{"direction": "inbound", "message": "second", "created_at": "2026-11-19T10:05:00Z"},
-               {"direction": "outbound", "message": "first", "created_at": "2026-11-19T10:00:00Z"},
-               {"direction": None, "message": "dropped"}]
-    ctx = _ctx({**LEAD, "Normalize Phone": {"text": "from n8n"}, "Combine messages": {"combinedMessage": "a\nb"},
-                "Get Recent SMS History": history, "Insert Log": {"id": 42}, "Intent Classifier": {"intent": "inventory"},
-                "Get tenant emails & phone": {"timezone": "America/Denver"}})
+def test_tool_context_reads_supplied_computed_nodes():
+    ctx = _ctx({"Normalize Phone": {"text": "from n8n"}, "Combine messages": {"combinedMessage": "a\nb"},
+                "Intent Classifier": {"intent": "inventory"}})
     assert ctx.inbound_text == "from n8n" and ctx.combined_message == "a\nb"
-    assert (await ctx.lead())["id"] == LEAD_ID and (await ctx.lead())["tenant_id"] == TENANT  # no database needed
-    assert [r["message"] for r in await ctx.recent_sms(5)] == ["first", "second"]
-    assert (await ctx.saved_inbound())["id"] == 42 and ctx.classifier() == {"intent": "inventory"}
-    assert await ctx.timezone_name() == "America/Denver"
-
-
-def test_a_supplied_lead_lets_escalation_be_offered_without_a_thread_key():
-    runner = ToolRunner(ToolsConfig())
-    _, skipped = runner.offered("inventory", _ctx({}))
-    assert "lead" in skipped["Escalate_To_Human"]
-    _, skipped = runner.offered("inventory", _ctx(LEAD))
-    assert "database" in skipped["Escalate_To_Human"]  # past the lead check; only the database is missing here
+    assert ctx.classifier() == {"intent": "inventory"}
+    assert _ctx({}).classifier() is None and _ctx({}).inbound_text.startswith("Can someone")
 
 
 # ---- Escalate_To_Human with the Intent Classifier -------------------------------------------------------------
@@ -125,33 +120,33 @@ def test_protected_close_category_follows_n8n():
 
 
 async def test_classifier_closes_and_complaint_override():
-    wrong_owner = await escalate_to_human(_ctx({**LEAD, "Intent Classifier": {"wrong_owner": True}}), ARGS)
+    wrong_owner = await escalate_to_human(_ctx({"Intent Classifier": {"wrong_owner": True}}), ARGS)
     assert wrong_owner["error"] == "protected_close_uses_suppression"
     decline = "I already told you I'm not interested, get me a manager"
-    complaint = await escalate_to_human(_ctx({**LEAD, "Intent Classifier": {"complaint_signals": True}}, decline),
+    complaint = await escalate_to_human(_ctx({"Intent Classifier": {"complaint_signals": True}}, decline),
                                         {**ARGS, "category": "complaint"})
     assert complaint["ok"] is True and complaint["dry_run"] is True
 
 
 async def test_deceased_classifier_halts_and_holds_in_dry_run():
     result = await escalate_to_human(
-        _ctx({**LEAD, "Intent Classifier": {"intent": "deceased", "deceased": True}}, "My father passed away"),
-        {**ARGS, "category": "other", "urgency": "urgent"},
+        _ctx({"Intent Classifier": {"intent": "deceased", "deceased": True}}, "My father passed away"),
+        {**ARGS, "urgency": "urgent"},
     )
     s = result["suppression"]
     assert s["attempted"] and s["suppression_effective"] and s["category"] == "deceased" and not s["dnc_applied"]
     assert "send hold is in place" in result["message"]
 
 
-async def test_supplied_inbound_receipt_must_bind_to_the_lead():
-    good = {"id": 255, "tenant_id": TENANT, "lead_id": LEAD_ID, "direction": "inbound"}
-    ok = await escalate_to_human(_ctx({**LEAD, "Insert Log": good}), ARGS)
+async def test_inbound_receipt_from_the_database_must_bind_to_the_lead():
+    row = {"id": 255, "tenant_id": TENANT, "lead_id": LEAD["id"], "direction": "inbound"}
+    ok = await escalate_to_human(_ctx({}, saved_inbound=row), ARGS)
     assert ok["action"] == "sales_handoff" and ok["would_insert"]["id"].startswith("a1080908-")
-    assert ok["lead_id"] == LEAD_ID and ok["inbound_log_id"] == "255"
-    wrong = await escalate_to_human(_ctx({**LEAD, "Insert Log": {**good, "lead_id": "someone-else"}}), ARGS)
+    assert ok["lead_id"] == LEAD["id"] and ok["inbound_log_id"] == "255"
+    wrong = await escalate_to_human(_ctx({}, saved_inbound={**row, "lead_id": "someone-else"}), ARGS)
     assert wrong["error"] == "missing_current_saved_inbound"
 
 
 async def test_legacy_permanent_dnc_is_reported_as_ignored():
-    result = await escalate_to_human(_ctx(LEAD), {**ARGS, "permanent_dnc": True})
+    result = await escalate_to_human(_ctx({}), {**ARGS, "permanent_dnc": True})
     assert result["suppression"]["legacy_permanent_dnc_requested"] is True and "IGNORED" in result["message"]

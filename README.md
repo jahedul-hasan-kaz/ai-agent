@@ -235,18 +235,22 @@ and `email_thread_key` (the customer's email address). See [Customer records](#c
 - `model` is required; there is no default model. If it is missing or unknown, you get a `400` that lists the configured model ids. If you also send `model_type`, it must match the model, and the list is narrowed to that type.
 - `agent` picks the system prompt: `app/prompts/agents/<agent>_system_instr.md` : `general` (default), `inventory`, `scheduling` (file `schedule_system_instr.md`), `value_data_collection`, `service_trade_reply` (see `GET /v1/agents`). Names are case-insensitive, spaces and hyphens count as `_`, and `schedule` is accepted for `scheduling`. Without it (or with `""`) the `general` agent answers; an unknown agent is a `400 unknown_agent` listing the choices. The files are only read. Their n8n `{{ … }}` expressions are replaced by the fallback each one names (e.g. `'the dealership'`), and the date/time ones point to a `RUNTIME CONTEXT` block with today's date and time (America/New_York). The system message is: agent prompt → runtime context → your own `system` messages → customer records → retrieved knowledge.
 - **Large prompts.** The agent prompts are 8k–14k tokens. The agent prompt always comes first and is byte-identical on every request, so providers cache it: Anthropic via `cache_control` (cached reads cost ~10% and are faster), OpenAI and Ollama by reusing a matching prefix on their own. Set `context_window` on each model: the prompt is then fitted inside it. The agent's instructions are never cut; the reply's `max_tokens` is reserved; then the latest message, recent turns (up to half of what is left), retrieved knowledge and customer history get shrunk budgets, and the oldest turns are dropped. If even the agent prompt doesn't fit you get `400 context_window_exceeded` instead of a silently truncated prompt. **Ollama:** its default context length is far smaller than these prompts and it silently drops the start of a longer prompt. Start it with e.g. `OLLAMA_CONTEXT_LENGTH=32768` and set the model's `context_window` to the same value. Small local models (1B–3B) follow 14k-token rulebooks poorly; prefer 8B+ for these agents.
-- `node_data` supplies what the n8n workflow's other nodes hand the agent, keyed by node name, each shaped like that
-  node's `$('<node>').first().json` (`Get Recent SMS History` is a list of rows). The prompt's `{{ … }}` expressions
-  and the tools read a supplied node first, the way the workflow does; anything left out keeps the usual lookup or
-  fallback. `GET /v1/agents` lists the nodes and fields each agent reads (`inputs`). A supplied `Lookup Lead` must
-  belong to `tenant_id`, and lets the lead-based tools run without a thread key. Example:
+- **Workflow node values.** The prompts' `{{ $('<node>')… }}` expressions and the tools read other n8n nodes.
+  - *Database-backed nodes* (`Get tenant`, `Get tenant emails & phone`, `Lookup Lead`, `Lookup Lead Vehicle`,
+    `Get Recent SMS History`, `Insert Log`, `Get Equity Context`, `Load Conversation State`) are read by the gateway
+    itself: the dealership from `tenant_id`, the lead and vehicle from the thread key. They fill the prompt (e.g. the
+    dealer's slug and main phone, the customer's first name) and the tools. Sending one in `node_data` is a `400`.
+    `Get Equity Context` and `Load Conversation State` (other agents' prompts) are not loaded yet; their expressions
+    keep their fallbacks.
+  - *Computed nodes* (`Intent Classifier`, `Get Current Date/Time`, `Normalize Phone`, `Combine messages`,
+    `Select Market Value`) can be supplied in `node_data`, keyed by node name and shaped like that node's
+    `$('<node>').first().json`; anything left out is derived as usual. `GET /v1/agents` lists, per agent, the ones it
+    reads (`inputs`). Example:
 
   ```json
   "node_data": {
-    "Get tenant emails & phone": {"main_phone": "(703) 555-0142", "hours_of_operation": {"timezone": "America/New_York"}},
-    "Lookup Lead": {"id": "<lead uuid>", "first_name": "Sam"},
-    "Insert Log": {"id": 9137, "tenant_id": "<tenant uuid>", "lead_id": "<lead uuid>", "direction": "inbound"},
-    "Intent Classifier": {"intent": "inventory", "active_buying_request": true, "explicit_decline_or_deferral": false}
+    "Intent Classifier": {"intent": "inventory", "active_buying_request": true, "explicit_decline_or_deferral": false},
+    "Get Current Date/Time": {"date": "2026-11-19", "time_12h": "10:30 AM", "day_of_week": "Thursday"}
   }
   ```
 - Values the request leaves unset come from that model's config entry.
@@ -282,7 +286,7 @@ Lists the configured models (`id`, `type`, `provider`, `model`). API keys are ne
 
 ### `GET /v1/agents` (and `GET /v1/playground/agents` for the chat tester)
 
-Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`), `prompt_tokens` (estimated size of its instructions), `tools`, and `inputs`: the upstream workflow nodes its prompt and tools read (`node`, `fields`, `list_of_rows`, `used_by`), i.e. what `node_data` can supply. The chat tester shows one JSON box per input under **Workflow data**.
+Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`), `prompt_tokens` (estimated size of its instructions), `tools`, and `inputs`: the computed workflow nodes its prompt and tools read (`node`, `fields`, `list_of_rows`, `used_by`), i.e. what `node_data` can supply. Database-backed nodes are not listed: the gateway reads them. The chat tester shows one JSON box per input under **Workflow data**.
 
 ### `GET /v1/models/remote`
 

@@ -24,7 +24,8 @@ from app.models.chat import (
 )
 from app.rag.context import build_context
 from app.rag.retriever import Retriever, build_query
-from app.services.agent_prompts import CHARS_PER_TOKEN, estimate_tokens, get_agent, runtime_context
+from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, estimate_tokens, get_agent, runtime_context
+from app.services.node_data import DATABASE_NODES
 from app.tools.base import Tool, ToolContext
 from app.tools.registry import ToolRun, ToolRunner, spec
 
@@ -94,14 +95,52 @@ class ChatService:
         self.customers = customers
         self.tools = tools
 
-    async def build_request(self, req: ChatCompletionRequest) -> LLMRequest:
+    async def _context(self, req: ChatCompletionRequest) -> Optional[ToolContext]:
+        """The per-request lookups (tenant, lead, vehicle, ...) shared by the prompt and the tools, so each record is
+        read once per request. None when the gateway has no database side at all."""
+        if self.tools is None:
+            return None
+        turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
+        return await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns, req.node_data)
+
+    async def _database_nodes(self, agent: AgentPrompt, ctx: Optional[ToolContext]) -> dict:
+        """The database-backed workflow nodes the agent's prompt reads, from the database: what n8n's "Get tenant",
+        "Get tenant emails & phone", "Lookup Lead" and "Lookup Lead Vehicle" return. A lookup that fails or finds
+        nothing leaves its node out, so the prompt keeps that expression's fallback."""
+        wanted = set(agent.inputs()) & DATABASE_NODES
+        if ctx is None or not wanted:
+            return {}
+        nodes: dict = {}
+        if wanted & {"Get tenant", "Get tenant emails & phone"} and ctx.tenant_id is not None:
+            tenant = await ctx.tenant()  # never raises
+            if tenant:
+                nodes["Get tenant"] = nodes["Get tenant emails & phone"] = tenant
+        if wanted & {"Lookup Lead", "Lookup Lead Vehicle"} and ctx.tenant_id is not None and (
+            ctx.sms_thread_key or ctx.email_thread_key
+        ):
+            try:
+                nodes["Lookup Lead"] = await ctx.lead()
+                if "Lookup Lead Vehicle" in wanted:
+                    vehicle = await ctx.vehicle()
+                    if vehicle:
+                        nodes["Lookup Lead Vehicle"] = vehicle
+            except Exception as exc:  # noqa: BLE001 - no lead or no database: the prompt keeps its fallbacks
+                logger.info("prompt: lead/vehicle not loaded ({})", f"{type(exc).__name__}: {exc}"[:200])
+        return nodes
+
+    async def build_request(self, req: ChatCompletionRequest, ctx: Optional[ToolContext] = None) -> LLMRequest:
         # Order matters. The agent prompt leads and never changes between requests, so providers can cache
         # it as a prefix; then today's date/time, the caller's own system messages, the customer's records
         # and history, and the knowledge retrieved for this message last, nearest the conversation.
         agent = get_agent(req.agent)
-        # Supplied workflow node values (node_data) fill the prompt's n8n expressions; see app/services/node_data.py.
-        agent_text = agent.render(req.node_data)
-        system = [agent_text, runtime_context(node_data=req.node_data)] + [
+        # The prompt's n8n expressions get the database-backed nodes read here and the computed ones the caller
+        # supplied (node_data); see app/services/node_data.py.
+        ctx = ctx or await self._context(req)
+        nodes = {**(await self._database_nodes(agent, ctx)), **(req.node_data or {})}
+        if nodes:
+            logger.info("prompt nodes: {}", ", ".join(sorted(nodes)))
+        agent_text = agent.render(nodes)
+        system = [agent_text, runtime_context(node_data=nodes)] + [
             m.content for m in req.messages if m.role == "system"
         ]
         all_turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
@@ -229,17 +268,18 @@ class ChatService:
         logger.info("Stored exchange {} inbound={} outbound={}", done.channel, done.inbound_id, done.outbound_id)
         return StoredMessages(channel=done.channel, inbound_id=done.inbound_id, outbound_id=done.outbound_id)
 
-    async def _tooling(self, req: ChatCompletionRequest) -> tuple[Optional[ToolContext], dict[str, Tool]]:
+    async def _tooling(
+        self, req: ChatCompletionRequest, ctx: Optional[ToolContext] = None
+    ) -> tuple[Optional[ToolContext], dict[str, Tool]]:
         """The tools the request's agent may call in this request (see app/tools/registry.py)."""
         if self.tools is None or not self.tools.settings.enabled or not req.use_tools:
-            return None, {}
+            return ctx, {}
         primary = self.manager.resolve(req.model, req.model_type)
         if not primary.supports_tools:
             logger.info("tools off: model {} has supports_tools=false", primary.id)
-            return None, {}
+            return ctx, {}
         agent = get_agent(req.agent)
-        turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
-        ctx = await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns, req.node_data)
+        ctx = ctx or await self._context(req)
         offered, skipped = self.tools.offered(agent.id, ctx)
         if offered or skipped:
             logger.info(
@@ -251,8 +291,9 @@ class ChatService:
     async def _answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
         """Ask the model; while it calls tools, run them and ask again with their results. After
         tools.max_iterations rounds of calls the model must answer (tool_choice=none)."""
-        request = await self.build_request(req)
-        ctx, tools = tooling or await self._tooling(req)
+        ctx = tooling[0] if tooling else await self._context(req)
+        request = await self.build_request(req, ctx)
+        ctx, tools = tooling or await self._tooling(req, ctx)
         if tools:
             request = replace(request, tools=[spec(t) for t in tools.values()])
         answer: Optional[_Answer] = None
@@ -358,7 +399,7 @@ class ChatService:
             return final
 
         try:
-            tooling = await self._tooling(req)
+            tooling = await self._tooling(req, await self._context(req))
             if tooling[1]:
                 answer = await self._answer(req, tooling)
                 reply = answer.result.content.strip()
@@ -374,7 +415,7 @@ class ChatService:
                 yield _event(final)
             else:
                 first, parts = True, []
-                request = await self.build_request(req)
+                request = await self.build_request(req, tooling[0])
                 async for model, item in self.manager.stream(request, primary.id):
                     if isinstance(item, StreamDone):
                         final = final_chunk(
