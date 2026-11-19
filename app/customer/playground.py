@@ -2,6 +2,7 @@
 Read-only lookups for the web UI's chat tester: dealerships, the customers who
 have an SMS or email thread with one, and a thread's messages a page at a time.
 """
+import re
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -24,13 +25,16 @@ _EMAIL_CUSTOMER = (
 )
 
 # Newest message per customer first, across every dealership unless $1 names one. $3 is a search text
-# matched against the key, the lead's name and the dealership's name.
+# matched against the key, the lead's name and the dealership's name. $4 is a customer filter (name or
+# number); $5 is its digits alone, matched against the number with its formatting removed. $6 is a message
+# text filter: only threads with a matching message, each shown by its newest match.
 _SMS_THREADS_SQL = """
 WITH last AS (
     SELECT DISTINCT ON (m.tenant_id, m.thread_key) m.tenant_id, m.thread_key AS key, m.created_at AS last_at,
            m.direction, m.message AS body
     FROM public.sms_log m
     WHERE ($1::uuid IS NULL OR m.tenant_id = $1) AND m.thread_key IS NOT NULL AND m.thread_key <> ''
+      AND ($6::text IS NULL OR m.message ILIKE '%' || $6 || '%')
     ORDER BY m.tenant_id, m.thread_key, m.created_at DESC
 ), names AS (
     -- One pass over the leads (they have no tenant/phone index), joined by hash rather than per thread.
@@ -43,18 +47,26 @@ SELECT last.*, names.name, {tenant_name} AS tenant_name
 FROM last
 LEFT JOIN names ON names.tenant_id = last.tenant_id AND names.key = last.key
 LEFT JOIN public.tenants t ON t.id = last.tenant_id
-WHERE $3::text IS NULL OR last.key ILIKE '%' || $3 || '%' OR names.name ILIKE '%' || $3 || '%'
-   OR {tenant_name} ILIKE '%' || $3 || '%'
+WHERE ($3::text IS NULL OR last.key ILIKE '%' || $3 || '%' OR names.name ILIKE '%' || $3 || '%'
+   OR {tenant_name} ILIKE '%' || $3 || '%')
+  AND ($4::text IS NULL OR last.key ILIKE '%' || $4 || '%' OR names.name ILIKE '%' || $4 || '%'
+   OR ($5::text IS NOT NULL AND regexp_replace(last.key, '[^0-9]', '', 'g') LIKE '%' || $5 || '%'))
 ORDER BY last.last_at DESC
 LIMIT $2
 """
 
+# Same filters as SMS, without the digits-only one: $4 matches the address or name, $5 the subject or body.
+# With a text filter the preview is the part that matched (the subject, else the body).
 _EMAIL_THREADS_SQL = """
 WITH last AS (
     SELECT DISTINCT ON (m.tenant_id, 2) m.tenant_id, {customer} AS key, m.created_at AS last_at, m.direction,
-           coalesce(nullif(m.subject, ''), nullif(m.body_text, ''), m.body_html) AS body
+           CASE WHEN $5::text IS NOT NULL AND coalesce(m.subject, '') NOT ILIKE '%' || $5 || '%'
+                THEN coalesce(nullif(m.body_text, ''), m.body_html)
+                ELSE coalesce(nullif(m.subject, ''), nullif(m.body_text, ''), m.body_html) END AS body
     FROM public.email_log m
     WHERE ($1::uuid IS NULL OR m.tenant_id = $1)
+      AND ($5::text IS NULL OR m.subject ILIKE '%' || $5 || '%'
+           OR coalesce(nullif(m.body_text, ''), m.body_html) ILIKE '%' || $5 || '%')
     ORDER BY m.tenant_id, 2, m.created_at DESC
 ), names AS (
     SELECT DISTINCT ON (l.tenant_id, lower(l.email)) l.tenant_id, lower(l.email) AS key,
@@ -69,6 +81,7 @@ LEFT JOIN names ON names.tenant_id = last.tenant_id AND names.key = last.key
 LEFT JOIN public.tenants t ON t.id = last.tenant_id
 WHERE last.key <> '' AND ($3::text IS NULL OR last.key ILIKE '%' || $3 || '%' OR names.name ILIKE '%' || $3 || '%'
    OR {tenant_name} ILIKE '%' || $3 || '%')
+  AND ($4::text IS NULL OR last.key ILIKE '%' || $4 || '%' OR names.name ILIKE '%' || $4 || '%')
 ORDER BY last.last_at DESC
 LIMIT $2
 """
@@ -88,9 +101,44 @@ async def tenants(pool: asyncpg.Pool) -> list[dict]:
     return [{"id": str(r["id"]), "name": r["name"] or str(r["id"])} for r in await pool.fetch(_TENANTS_SQL)]
 
 
-async def threads(pool: asyncpg.Pool, tenant_id: Optional[UUID], channel: str, search: Optional[str], limit: int) -> list[dict]:
-    sql = _SMS_THREADS_SQL if channel == "sms" else _EMAIL_THREADS_SQL
-    rows = await pool.fetch(sql, tenant_id, limit, (search or "").strip() or None)
+def _like(value: Optional[str]) -> Optional[str]:
+    """Trimmed text for an ILIKE '%…%' match, with its own % and _ taken literally; None when blank."""
+    value = (value or "").strip()
+    return re.sub(r"([\\%_])", r"\\\1", value) if value else None
+
+
+def _snippet(body: str, text: Optional[str], size: int = 160) -> str:
+    """The preview, starting a little before the first match of text so the match is visible."""
+    at = body.lower().find(text.lower()) if text else -1
+    if at > 40:
+        body = "…" + body[at - 30 :]
+    return body[:size]
+
+
+async def threads(
+    pool: asyncpg.Pool,
+    tenant_id: Optional[UUID],
+    channel: str,
+    search: Optional[str],
+    limit: int,
+    customer: Optional[str] = None,
+    text: Optional[str] = None,
+) -> list[dict]:
+    """
+    Threads, newest first. search matches the customer or the dealership's name; customer matches the
+    customer's name, number or email (an SMS number with any formatting); text keeps only threads with a
+    message containing it.
+    """
+    email = channel == "email"
+    customer_like, text_like = _like(customer), _like(text)
+    if email:
+        rows = await pool.fetch(_EMAIL_THREADS_SQL, tenant_id, limit, (search or "").strip() or None, customer_like, text_like)
+    else:
+        digits = re.sub(r"\D", "", customer or "") or None
+        rows = await pool.fetch(
+            _SMS_THREADS_SQL, tenant_id, limit, (search or "").strip() or None, customer_like, digits, text_like
+        )
+    text = (text or "").strip() or None
     return [
         {
             "tenant_id": str(r["tenant_id"]),
@@ -99,7 +147,7 @@ async def threads(pool: asyncpg.Pool, tenant_id: Optional[UUID], channel: str, s
             "name": r["name"] or None,
             "last_at": r["last_at"],
             "last_direction": r["direction"],
-            "last_message": _clean(r["body"] or "", email=channel == "email")[:160],
+            "last_message": _snippet(_clean(r["body"] or "", email=email), text),
         }
         for r in rows
     ]

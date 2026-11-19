@@ -44,11 +44,21 @@ async def list_threads(
     tenant_id: Optional[UUID] = None,
     channel: Literal["sms", "email"] = "sms",
     search: Optional[str] = Query(None, max_length=100),
+    customer: Optional[str] = Query(None, max_length=100),
+    text: Optional[str] = Query(None, max_length=200),
     limit: int = Query(50, ge=1, le=200),
     service: ChatService = Depends(get_chat_service),
 ):
-    """Customers with a thread, most recent first: at one dealership, or at all of them without tenant_id."""
-    return {"data": await playground.threads(await _pool(service), tenant_id, channel, search, limit)}
+    """
+    Customers with a thread, most recent first: at one dealership, or at all of them without tenant_id.
+    search matches the customer or dealership name; customer the customer's name, number (any formatting)
+    or email; text only keeps threads with a message containing it, previewing the newest match.
+    """
+    return {
+        "data": await playground.threads(
+            await _pool(service), tenant_id, channel, search, limit, customer=customer, text=text
+        )
+    }
 
 
 @router.get("/history")

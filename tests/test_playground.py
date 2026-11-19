@@ -33,8 +33,8 @@ def enabled(monkeypatch):
 
     calls = []
 
-    async def threads(pool, tenant_id, channel, search, limit):
-        calls.append((tenant_id, channel, search, limit))
+    async def threads(pool, tenant_id, channel, search, limit, customer=None, text=None):
+        calls.append((tenant_id, channel, search, limit) + ((customer, text) if customer or text else ()))
         return [{"key": "+15551234567", "name": "Mychal Reed", "last_at": "2026-01-05T15:00:00Z",
                  "last_direction": "inbound", "last_message": "hi"}]
 
@@ -61,6 +61,44 @@ def test_threads_need_no_api_key_and_allow_the_ui_origin(enabled):
     assert c.get("/v1/playground/threads").status_code == 200  # every dealership
     assert calls[-1] == (None, "sms", None, 50)
     assert c.get(f"/v1/playground/threads?tenant_id={TENANT}&channel=fax").status_code == 422
+
+
+def test_threads_pass_customer_and_text_filters(enabled):
+    c, calls = enabled
+    res = c.get(f"/v1/playground/threads?tenant_id={TENANT}&customer=(555) 123&text=trade in")
+    assert res.status_code == 200
+    assert calls == [(uuid.UUID(TENANT), "sms", None, 50, "(555) 123", "trade in")]
+    assert c.get("/v1/playground/threads?text=" + "x" * 201).status_code == 422
+
+
+class _Pool:
+    def __init__(self, rows):
+        self.rows, self.sql, self.args = rows, None, None
+
+    async def fetch(self, sql, *args):
+        self.sql, self.args = sql, args
+        return self.rows
+
+
+async def test_sms_filters_reach_the_query_escaped_and_the_preview_shows_the_match():
+    row = {"tenant_id": TENANT, "tenant_name": "Kia", "key": "+15551234567", "name": None,
+           "last_at": "2026-01-05T15:00:00Z", "direction": "inbound",
+           "body": "Hello " + "x" * 200 + " what is my trade-in worth?"}
+    pool = _Pool([row])
+    await endpoints.playground.threads(pool, None, "sms", None, 10, customer=" (555) 123 ", text="trade-IN 50%")
+    assert pool.args == (None, 10, None, "(555) 123", "555123", "trade-IN 50\\%")
+    assert "regexp_replace(last.key" in pool.sql and "m.message ILIKE" in pool.sql
+
+    pool = _Pool([row])
+    out = await endpoints.playground.threads(pool, None, "sms", None, 10, text="TRADE-in")
+    assert out[0]["last_message"].startswith("…") and "trade-in worth?" in out[0]["last_message"]
+    assert pool.args == (None, 10, None, None, None, "TRADE-in")
+
+
+async def test_email_filters_have_no_digits_argument():
+    pool = _Pool([])
+    await endpoints.playground.threads(pool, None, "email", "kia", 10, customer="reed@", text="")
+    assert pool.args == (None, 10, "kia", "reed@", None)
 
 
 def test_models_and_streaming_chat(enabled):
