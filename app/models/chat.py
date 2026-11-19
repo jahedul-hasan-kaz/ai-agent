@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.llm.settings import ModelType
-from app.services.node_data import DATABASE_NODES
+from app.services.node_data import INTERNAL_NODES
 
 _MAX_NODE_DATA_CHARS = 200_000
 
@@ -82,10 +82,9 @@ class ChatCompletionRequest(BaseModel):
         None,
         description="Outputs of the n8n SMS handler's computed upstream nodes that the agent's prompt and tools read, "
         "keyed by node name, each shaped like that node's `$('<node>').first().json`. E.g. {\"Intent Classifier\": "
-        "{\"intent\": \"inventory\"}, \"Get Current Date/Time\": {\"date\": \"2026-11-19\"}}. A supplied value wins; "
-        "anything left out is derived as usual. Database-backed nodes (the tenant, lead, vehicle, SMS history, ...) are "
-        "not accepted: the gateway reads them itself from tenant_id and the thread key. GET /v1/agents lists the "
-        "nodes and fields each agent reads.",
+        "{\"intent\": \"inventory\"}}. A supplied value wins; anything left out is derived as usual. Database-backed "
+        "nodes (the tenant, lead, vehicle, SMS history, ...) and the clock (Get Current Date/Time) are not accepted: "
+        "the gateway reads or computes them itself. GET /v1/agents lists the nodes and fields each agent reads.",
     )
     temperature: Optional[float] = Field(None, ge=0, le=2)
     top_p: Optional[float] = Field(None, gt=0, le=1)
@@ -123,11 +122,11 @@ class ChatCompletionRequest(BaseModel):
     def _node_data_shape(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
         if not value:
             return None
-        database = sorted(set(value) & DATABASE_NODES)
-        if database:
+        internal = sorted(set(value) & INTERNAL_NODES)
+        if internal:
             raise ValueError(
-                f"node_data cannot supply {', '.join(database)}: database-backed nodes are read by the gateway itself "
-                "from tenant_id and sms_thread_key / email_thread_key"
+                f"node_data cannot supply {', '.join(internal)}: the gateway reads or computes it itself (database "
+                "nodes from tenant_id and sms_thread_key / email_thread_key, the clock from the server)"
             )
         for name, output in value.items():
             if not isinstance(output, (dict, list)):

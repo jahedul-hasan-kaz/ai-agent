@@ -138,34 +138,19 @@ def _render(expression: str, node_data: Optional[nd.NodeData] = None) -> str:
     return "unavailable" if value.startswith("__") else value
 
 
-def node_timezone(node_data: Optional[nd.NodeData]) -> Optional[str]:
-    """The dealership's timezone from a supplied "Get tenant emails & phone", in the workflow's order."""
-    for path in ("hours_of_operation.timezone", "timezone", "time_zone"):
-        v = nd.value(node_data, "Get tenant emails & phone", path)
-        if nd.present(v):
-            return str(v)
-    return None
-
-
-def runtime_context(
-    now: Optional[datetime] = None, timezone: str = DEFAULT_TIMEZONE, node_data: Optional[nd.NodeData] = None
-) -> str:
-    """The per-request facts the prompt's date/time placeholders point to. Kept out of the agent text
-    so that text is an unchanging, cacheable prefix. A supplied "Get Current Date/Time" node, or the
-    dealership timezone in "Get tenant emails & phone", replaces the server's clock."""
-    timezone = node_timezone(node_data) or timezone
+def runtime_context(now: Optional[datetime] = None, timezone: str = DEFAULT_TIMEZONE) -> str:
+    """The per-request facts the prompt's date/time placeholders point to: n8n's "Get Current Date/Time" node,
+    computed here from the server's clock (in America/New_York, as that node does). Kept out of the agent text
+    so that text is an unchanging, cacheable prefix."""
     try:
         tz = ZoneInfo(timezone)
     except ZoneInfoNotFoundError:
         tz, timezone = ZoneInfo("UTC"), "UTC"
     local = (now or datetime.now(tz)).astimezone(tz)
     clock = f"{local:%I:%M %p}".lstrip("0")
-    given: dict[str, Any] = nd.node(node_data, "Get Current Date/Time") or {}
-    given = given if isinstance(given, dict) else {}
-    pick = lambda key, default: str(given[key]) if nd.present(given.get(key)) else default  # noqa: E731
     return (
         "=== RUNTIME CONTEXT ===\n"
-        f"Current date: {pick('date', f'{local:%Y-%m-%d}')}\n"
-        f"Current time: {pick('time_12h', clock)} ({timezone})\n"
-        f"Day of week: {pick('day_of_week', f'{local:%A}')}"
+        f"Current date: {local:%Y-%m-%d}\n"
+        f"Current time: {clock} ({timezone})\n"
+        f"Day of week: {local:%A}"
     )

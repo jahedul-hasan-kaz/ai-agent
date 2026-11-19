@@ -10,7 +10,7 @@ from app.llm.settings import ToolsConfig
 from app.models.chat import ChatCompletionRequest
 from app.services.agent_prompts import get_agent, runtime_context
 from app.services.chat_service import ChatService
-from app.services.node_data import DATABASE_NODES
+from app.services.node_data import INTERNAL_NODES
 from app.tools.base import ToolContext
 from app.tools.escalation import escalate_to_human, protected_close_category
 from app.tools.registry import agent_inputs
@@ -35,11 +35,10 @@ def _ctx(node_data: dict, text: str = "Can someone call me about the RAV4?", **c
 
 def test_only_computed_nodes_are_inputs():
     inputs = {i["node"]: i for i in agent_inputs("inventory", get_agent("inventory").inputs())}
-    assert set(inputs) == {"Get Current Date/Time", "Intent Classifier", "Normalize Phone", "Combine messages"}
-    assert inputs["Get Current Date/Time"]["used_by"] == ["prompt"]
+    assert set(inputs) == {"Intent Classifier", "Normalize Phone", "Combine messages"}
     assert inputs["Intent Classifier"]["used_by"] == ["Escalate_To_Human"]
     for agent in ("general", "scheduling", "value_data_collection", "service_trade_reply"):
-        assert not {i["node"] for i in agent_inputs(agent, get_agent(agent).inputs())} & DATABASE_NODES
+        assert not {i["node"] for i in agent_inputs(agent, get_agent(agent).inputs())} & INTERNAL_NODES
 
 
 def test_agents_endpoint_lists_inputs(client):  # noqa: F811
@@ -48,12 +47,14 @@ def test_agents_endpoint_lists_inputs(client):  # noqa: F811
     assert "Intent Classifier" in nodes and "Lookup Lead" not in nodes
 
 
-def test_request_rejects_database_nodes():
+def test_request_rejects_database_nodes_and_the_clock():
     base = {"model": "m", "messages": [{"role": "user", "content": "hi"}], "tenant_id": TENANT}
     assert ChatCompletionRequest(**base, node_data={}).node_data is None
     assert ChatCompletionRequest(**base, node_data={"Intent Classifier": {"intent": "inventory"}}).node_data
-    with pytest.raises(ValidationError, match="database-backed"):
+    with pytest.raises(ValidationError, match="reads or computes it itself"):
         ChatCompletionRequest(**base, node_data={"Lookup Lead": {"id": LEAD["id"]}})
+    with pytest.raises(ValidationError, match="Get Current Date/Time"):
+        ChatCompletionRequest(**base, node_data={"Get Current Date/Time": {"date": "2026-01-02"}})
     with pytest.raises(ValidationError, match="JSON object"):
         ChatCompletionRequest(**base, node_data={"Intent Classifier": "inventory"})
 
@@ -69,7 +70,6 @@ async def test_database_nodes_fill_the_prompt_from_the_database():
     assert nodes["Get tenant"]["slug"] == "koons" and nodes["Lookup Lead"]["first_name"] == "Sam"
     text = get_agent("inventory").render(nodes)
     assert "+15550001111" in text and "our main number" not in text and "koons" in text and "Highlander" in text
-    assert "America/Chicago" in runtime_context(node_data=nodes)
 
 
 async def test_no_lead_or_database_keeps_the_fallbacks():
@@ -79,19 +79,21 @@ async def test_no_lead_or_database_keeps_the_fallbacks():
     assert agent.render({}) == agent.text and "our main number" in agent.text
 
 
-def test_supplied_clock_reaches_the_prompt():
-    now = datetime(2026, 11, 19, 15, 0, tzinfo=timezone.utc)
-    given = runtime_context(now, node_data={"Get Current Date/Time": {"date": "2026-01-02", "time_12h": "8:15 AM", "day_of_week": "Friday"}})
-    assert "Current date: 2026-01-02" in given and "8:15 AM" in given and "Day of week: Friday" in given
+def test_the_clock_is_the_gateways_own_in_new_york():
+    # n8n "Get Current Date/Time": the server's clock in America/New_York; the prompt's date/time expressions point here.
+    clock = runtime_context(datetime(2026, 11, 19, 15, 0, tzinfo=timezone.utc))
+    assert "Current date: 2026-11-19" in clock and "10:00 AM (America/New_York)" in clock and "Thursday" in clock
+    assert "RUNTIME CONTEXT" in get_agent("inventory").render({})
 
 
 def test_node_data_reaches_the_models_prompt(client, providers):  # noqa: F811
-    body = {"model": "claude", "agent": "inventory", "use_tools": False,
-            "messages": [{"role": "user", "content": "What day is it?"}],
-            "node_data": {"Get Current Date/Time": {"date": "2031-02-03", "day_of_week": "Monday"}}}
+    # Select Market Value is a computed node the value agent's prompt reads.
+    body = {"model": "claude", "agent": "value_data_collection", "use_tools": False,
+            "messages": [{"role": "user", "content": "What's my car worth?"}],
+            "node_data": {"Select Market Value": {"market_value": 18450, "source": "acv"}}}
     assert client.post("/v1/chat/completions", json=body).status_code == 200
     system = providers["claude"].requests[-1].messages[0]["content"]
-    assert "2031-02-03" in system
+    assert "18450" in system
 
 
 # ---- tool context ---------------------------------------------------------------------------------------------

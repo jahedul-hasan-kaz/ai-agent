@@ -140,7 +140,7 @@ class ChatService:
         if nodes:
             logger.info("prompt nodes: {}", ", ".join(sorted(nodes)))
         agent_text = agent.render(nodes)
-        system = [agent_text, runtime_context(node_data=nodes)] + [
+        system = [agent_text, runtime_context()] + [
             m.content for m in req.messages if m.role == "system"
         ]
         all_turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]

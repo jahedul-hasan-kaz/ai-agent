@@ -5,8 +5,8 @@ In the workflow an agent's prompt and its tools read other nodes directly (`$('G
 the Tool Context node's `classifier: $('Intent Classifier').first().json`). Here:
 
 * database-backed nodes (DATABASE_NODES: the tenant, lead, vehicle, SMS history, ...) are read by the gateway from
-  tenant_id and the thread key, never supplied;
-* computed nodes (the Intent Classifier, the clock, the combined message, ...) can be supplied on a request as
+  tenant_id and the thread key, and the clock (SYSTEM_NODES) is the gateway's own: these are never supplied;
+* the other computed nodes (the Intent Classifier, the combined message, ...) can be supplied on a request as
   `node_data = {"<node name>": <that node's json>}`; anything left out keeps the gateway's own behaviour (a value
   derived from the messages, or the prompt's fallback).
 """
@@ -27,6 +27,12 @@ DATABASE_NODES = frozenset({
     "Get Equity Context",  # rpc get_lead_equity_context
     "Load Conversation State",  # sms_conversation_state
 })
+# Computed nodes the gateway works out itself.
+SYSTEM_NODES = frozenset({
+    "Get Current Date/Time",  # the server's clock, see agent_prompts.runtime_context
+})
+# Everything a request may not supply in node_data.
+INTERNAL_NODES = DATABASE_NODES | SYSTEM_NODES
 
 # $('Node').first().json.a?.b  /  $('Node').item.json.a
 _NODE_REF = re.compile(r"\$\('([^']+)'\)\.(?:first\(\)|last\(\)|item)\.json((?:\??\.[A-Za-z_][A-Za-z0-9_]*)+)")

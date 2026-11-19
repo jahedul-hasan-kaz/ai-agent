@@ -242,15 +242,15 @@ and `email_thread_key` (the customer's email address). See [Customer records](#c
     dealer's slug and main phone, the customer's first name) and the tools. Sending one in `node_data` is a `400`.
     `Get Equity Context` and `Load Conversation State` (other agents' prompts) are not loaded yet; their expressions
     keep their fallbacks.
-  - *Computed nodes* (`Intent Classifier`, `Get Current Date/Time`, `Normalize Phone`, `Combine messages`,
-    `Select Market Value`) can be supplied in `node_data`, keyed by node name and shaped like that node's
-    `$('<node>').first().json`; anything left out is derived as usual. `GET /v1/agents` lists, per agent, the ones it
-    reads (`inputs`). Example:
+  - *The clock* (`Get Current Date/Time`) is the gateway's own: the server's time in America/New_York, as n8n's node
+    computes it, in the `RUNTIME CONTEXT` block. Sending it in `node_data` is a `400` too.
+  - *Other computed nodes* (`Intent Classifier`, `Normalize Phone`, `Combine messages`, `Select Market Value`) can be
+    supplied in `node_data`, keyed by node name and shaped like that node's `$('<node>').first().json`; anything left
+    out is derived as usual. `GET /v1/agents` lists, per agent, the ones it reads (`inputs`). Example:
 
   ```json
   "node_data": {
-    "Intent Classifier": {"intent": "inventory", "active_buying_request": true, "explicit_decline_or_deferral": false},
-    "Get Current Date/Time": {"date": "2026-11-19", "time_12h": "10:30 AM", "day_of_week": "Thursday"}
+    "Intent Classifier": {"intent": "inventory", "active_buying_request": true, "explicit_decline_or_deferral": false}
   }
   ```
 - Values the request leaves unset come from that model's config entry.
@@ -286,7 +286,7 @@ Lists the configured models (`id`, `type`, `provider`, `model`). API keys are ne
 
 ### `GET /v1/agents` (and `GET /v1/playground/agents` for the chat tester)
 
-Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`), `prompt_tokens` (estimated size of its instructions), `tools`, and `inputs`: the computed workflow nodes its prompt and tools read (`node`, `fields`, `list_of_rows`, `used_by`), i.e. what `node_data` can supply. Database-backed nodes are not listed: the gateway reads them. The chat tester shows one JSON box per input under **Workflow data**.
+Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`), `prompt_tokens` (estimated size of its instructions), `tools`, and `inputs`: the computed workflow nodes its prompt and tools read (`node`, `fields`, `list_of_rows`, `used_by`), i.e. what `node_data` can supply. Database-backed nodes and the clock are not listed: the gateway reads or computes them. The chat tester shows one JSON box per input under **Workflow data**.
 
 ### `GET /v1/models/remote`
 
