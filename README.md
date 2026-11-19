@@ -255,6 +255,7 @@ and `email_thread_key` (the customer's email address). See [Customer records](#c
   ```
 - Values the request leaves unset come from that model's config entry.
 - If a model fails upstream (5xx, 429, timeout, unreachable, bad key), its `fallbacks` are tried in order. A request the model rejects as invalid (400) is not retried on another model. When streaming, fallback happens only before the first token is sent.
+- An empty reply (no text and no tool call, `empty_response`) is first asked again of the same model, `empty_retries` more times (default `3`, `0`–`10`, `0` turns it off), and only then are the `fallbacks` tried. Each empty reply is logged with the model's `finish_reason`. When streaming, an empty stream is retried the same way, since nothing has been sent yet. The Chat Tester sets it with the **Retry empty** chip.
 
 The response follows the OpenAI shape and adds `model_type`, `latency_ms`, `fallback_used`, `tools_used` and `tool_calls` (see [Agent tools](#agent-tools)). With `stream: true`, you get `chat.completion.chunk` SSE events ending with `data: [DONE]`, and the last chunk carries `usage`.
 

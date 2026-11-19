@@ -304,7 +304,7 @@ class ChatService:
             if final_round:
                 request = replace(request, tool_choice="none")
             try:
-                done = await self.manager.complete(request, req.model, req.model_type)
+                done = await self.manager.complete(request, req.model, req.model_type, req.empty_retries)
             except LLMError as exc:
                 if request.tools and not runs and _rejects_tools(exc):
                     # Some servers (and small local models) refuse `tools` outright: answer without them.
@@ -416,7 +416,7 @@ class ChatService:
             else:
                 first, parts = True, []
                 request = await self.build_request(req, tooling[0])
-                async for model, item in self.manager.stream(request, primary.id):
+                async for model, item in self.manager.stream(request, primary.id, empty_retries=req.empty_retries):
                     if isinstance(item, StreamDone):
                         final = final_chunk(
                             model, item.finish_reason, item.prompt_tokens, item.completion_tokens,

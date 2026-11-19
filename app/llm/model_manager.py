@@ -8,6 +8,8 @@ ModelManager: the one place that knows which models exist and how to call them.
 The caller always names the model; `model_type`, when given, must match it.
 A failed call moves on to the model's configured `fallbacks`, unless the
 request itself was rejected (bad params), which no other model would fix.
+An empty reply (no text, no tool call) is first asked again of the same model,
+up to `empty_retries` more times: it is usually a one-off.
 """
 import asyncio
 from dataclasses import dataclass, replace
@@ -16,7 +18,7 @@ from typing import AsyncIterator, Callable, Optional
 from loguru import logger
 
 from app.llm.anthropic_provider import AnthropicProvider
-from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamItem, flatten_tool_turns
+from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamDone, StreamItem, flatten_tool_turns
 from app.llm.openai_compatible import OpenAICompatibleProvider
 from app.llm.settings import AgentConfig, ModelConfig, ModelType
 
@@ -112,16 +114,19 @@ class ModelManager:
         return [model] + [self._models[f] for f in model.fallbacks]
 
     async def complete(
-        self, request: LLMRequest, model_id: Optional[str] = None, model_type: Optional[ModelType] = None
+        self, request: LLMRequest, model_id: Optional[str] = None, model_type: Optional[ModelType] = None,
+        empty_retries: int = 0,
     ) -> Completion:
         chain = self.candidates(self.resolve(model_id, model_type))
         failures: list[tuple[str, LLMError]] = []
         for index, model in enumerate(chain):
             try:
-                result = await self._providers[model.id].complete(_with_defaults(request, model))
-                if not result.content.strip() and not result.tool_calls:
-                    raise LLMError(f"{model.id} returned an empty reply", code="empty_response")
-                return Completion(model=model, result=result, fallback_used=index > 0)
+                for attempt in range(empty_retries + 1):
+                    result = await self._providers[model.id].complete(_with_defaults(request, model))
+                    if result.content.strip() or result.tool_calls:
+                        return Completion(model=model, result=result, fallback_used=index > 0)
+                    _log_empty(model, result.finish_reason, attempt, empty_retries)
+                raise _empty(model, empty_retries)
             except LLMError as exc:
                 failures.append((model.id, exc))
                 if not self._should_fall_back(exc, model, index, chain):
@@ -129,19 +134,38 @@ class ModelManager:
         raise AssertionError("unreachable: the candidate chain is never empty")
 
     async def stream(
-        self, request: LLMRequest, model_id: Optional[str] = None, model_type: Optional[ModelType] = None
+        self, request: LLMRequest, model_id: Optional[str] = None, model_type: Optional[ModelType] = None,
+        empty_retries: int = 0,
     ) -> AsyncIterator[tuple[ModelConfig, StreamItem]]:
         """Yields (model, text chunk | StreamDone). Falls back only before the first chunk;
-        after that the reply is half-delivered and the error is raised to the caller."""
+        after that the reply is half-delivered and the error is raised to the caller. A stream that ends
+        without any text is an empty reply: retried like `complete`, since nothing was sent yet."""
         chain = self.candidates(self.resolve(model_id, model_type))
         failures: list[tuple[str, LLMError]] = []
         for index, model in enumerate(chain):
             emitted = False
             try:
-                async for item in self._providers[model.id].stream(_with_defaults(request, model)):
-                    emitted = True
-                    yield model, item
-                return
+                for attempt in range(empty_retries + 1):
+                    held: list[str] = []  # whitespace before the first real text: not a reply yet
+                    finish_reason = None
+                    async for item in self._providers[model.id].stream(_with_defaults(request, model)):
+                        if isinstance(item, StreamDone):
+                            if emitted:
+                                yield model, item
+                            finish_reason = item.finish_reason
+                            break
+                        if not emitted and not item.strip():
+                            held.append(item)
+                            continue
+                        if not emitted:
+                            emitted = True
+                            for chunk in held:
+                                yield model, chunk
+                        yield model, item
+                    if emitted:
+                        return
+                    _log_empty(model, finish_reason, attempt, empty_retries)
+                raise _empty(model, empty_retries)
             except LLMError as exc:
                 failures.append((model.id, exc))
                 if emitted or not self._should_fall_back(exc, model, index, chain):
@@ -162,6 +186,18 @@ class ModelManager:
     async def aclose(self) -> None:
         for provider in self._providers.values():
             await provider.aclose()
+
+
+def _log_empty(model: ModelConfig, finish_reason: Optional[str], attempt: int, retries: int) -> None:
+    logger.warning(
+        "model {} returned an empty reply (finish_reason={}){}", model.id, finish_reason,
+        f" — retry {attempt + 1}/{retries}" if attempt < retries else "",
+    )
+
+
+def _empty(model: ModelConfig, retries: int) -> LLMError:
+    tries = f" ({retries + 1} tries)" if retries else ""
+    return LLMError(f"{model.id} returned an empty reply{tries}", code="empty_response")
 
 
 def _combined(failures: list[tuple[str, LLMError]]) -> LLMError:

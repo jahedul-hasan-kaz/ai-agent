@@ -86,6 +86,13 @@ class ChatCompletionRequest(BaseModel):
         "nodes (the tenant, lead, vehicle, SMS history, ...) and the clock (Get Current Date/Time) are not accepted: "
         "the gateway reads or computes them itself. GET /v1/agents lists the nodes and fields each agent reads.",
     )
+    empty_retries: int = Field(
+        3,
+        ge=0,
+        le=10,
+        description="How many more times to ask the same model when it returns an empty reply (no text and no "
+        "tool call), before falling back to the next model or failing with empty_response. 0: no retry.",
+    )
     temperature: Optional[float] = Field(None, ge=0, le=2)
     top_p: Optional[float] = Field(None, gt=0, le=1)
     top_k: Optional[int] = Field(
