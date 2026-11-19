@@ -2,12 +2,15 @@
 Chat completion API schemas — the OpenAI chat completion contract, so any
 OpenAI-compatible client can call this service, plus `model_type`.
 """
+import json
 from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.llm.settings import ModelType
+
+_MAX_NODE_DATA_CHARS = 200_000
 
 
 class ChatMessage(BaseModel):
@@ -74,6 +77,14 @@ class ChatCompletionRequest(BaseModel):
         description="Let the agent call its tools (the ones wired to it in the n8n SMS handler, see GET /v1/agents). "
         "false: the agent answers from its prompt alone.",
     )
+    node_data: Optional[dict[str, Any]] = Field(
+        None,
+        description="Outputs of the n8n SMS handler's upstream nodes that the agent's prompt and tools read, keyed by "
+        "node name, each shaped like that node's `$('<node>').first().json` (\"Get Recent SMS History\" is a list of "
+        "rows). E.g. {\"Get tenant emails & phone\": {\"main_phone\": \"+15551234567\"}, \"Intent Classifier\": "
+        "{\"intent\": \"inventory\"}}. A supplied value wins; anything left out is looked up or derived as usual. "
+        "GET /v1/agents lists the nodes and fields each agent reads.",
+    )
     temperature: Optional[float] = Field(None, ge=0, le=2)
     top_p: Optional[float] = Field(None, gt=0, le=1)
     top_k: Optional[int] = Field(
@@ -105,6 +116,18 @@ class ChatCompletionRequest(BaseModel):
     def _blank_is_none(cls, value: Optional[str]) -> Optional[str]:
         return value.strip() or None if value else None
 
+    @field_validator("node_data")
+    @classmethod
+    def _node_data_shape(cls, value: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        if not value:
+            return None
+        for name, output in value.items():
+            if not isinstance(output, (dict, list)):
+                raise ValueError(f"node_data['{name}'] must be the node's JSON object (or a list of rows)")
+        if len(json.dumps(value, default=str)) > _MAX_NODE_DATA_CHARS:
+            raise ValueError(f"node_data is larger than {_MAX_NODE_DATA_CHARS} characters")
+        return value
+
     @model_validator(mode="after")
     def _thread_keys_need_a_tenant(self) -> "ChatCompletionRequest":
         # Customer records are per dealership; looking a number up across tenants would leak another dealer's data.
@@ -112,6 +135,13 @@ class ChatCompletionRequest(BaseModel):
             raise ValueError("tenant_id is required with sms_thread_key or email_thread_key")
         if self.store and bool(self.sms_thread_key) == bool(self.email_thread_key):
             raise ValueError("store needs exactly one of sms_thread_key or email_thread_key")
+        # A supplied lead acts on a dealership's records, so it must belong to the request's dealership.
+        lead = (self.node_data or {}).get("Lookup Lead")
+        if isinstance(lead, dict) and lead:
+            if self.tenant_id is None:
+                raise ValueError("tenant_id is required with node_data['Lookup Lead']")
+            if lead.get("tenant_id") not in (None, "") and str(lead["tenant_id"]) != str(self.tenant_id):
+                raise ValueError("node_data['Lookup Lead'].tenant_id does not match tenant_id")
         return self
 
 
@@ -191,12 +221,24 @@ class ModelListResponse(BaseModel):
     data: list[ModelInfo]
 
 
+class NodeInput(BaseModel):
+    """One upstream n8n node whose output this agent reads, and can be supplied in `node_data`."""
+
+    node: str
+    fields: list[str] = Field(default_factory=list, description="Fields read from it (dotted paths). Empty: the whole output.")
+    list_of_rows: bool = Field(False, description="The node's output is a list of rows, not one object.")
+    used_by: list[str] = Field(default_factory=list, description="'prompt' and/or the tool names that read it.")
+
+
 class AgentInfo(BaseModel):
     id: str
     label: str
     default: bool = False
     prompt_tokens: int = Field(..., description="Estimated size of the agent's instructions.")
     tools: list[str] = Field(default_factory=list, description="Tools this agent can call (when the request allows them).")
+    inputs: list[NodeInput] = Field(
+        default_factory=list, description="Upstream workflow nodes the agent's prompt and tools read (see node_data)."
+    )
 
 
 class AgentListResponse(BaseModel):

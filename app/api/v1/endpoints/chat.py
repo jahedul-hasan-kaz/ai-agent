@@ -9,12 +9,13 @@ from app.models.chat import (
     ChatCompletionResponse,
     ModelInfo,
     ModelListResponse,
+    NodeInput,
     ServerModelsInfo,
     ServerModelsResponse,
 )
 from app.services.agent_prompts import DEFAULT_AGENT, agents
 from app.services.chat_service import ChatService
-from app.tools.registry import agent_tools
+from app.tools.registry import agent_inputs, agent_tools
 
 router = APIRouter()
 
@@ -53,12 +54,14 @@ async def list_models(service: ChatService = Depends(get_chat_service)):
 
 @router.get("/agents", response_model=AgentListResponse)
 async def list_agents():
-    """Agents a request can name in `agent`, one per app/prompts/agents/<agent>_system_instr.md."""
+    """Agents a request can name in `agent`, one per app/prompts/agents/<agent>_system_instr.md, with the tools
+    each can call and the upstream workflow nodes its prompt and tools read (what `node_data` can supply)."""
     return AgentListResponse(
         data=[
             AgentInfo(
                 id=a.id, label=a.label, default=a.id == DEFAULT_AGENT, prompt_tokens=a.tokens,
                 tools=[t.name for t in agent_tools(a.id)],
+                inputs=[NodeInput(**i) for i in agent_inputs(a.id, a.inputs())],
             )
             for a in agents().values()
         ]

@@ -175,7 +175,8 @@ not offered even though some prompts mention them.
   `{"ok": false, "error": …}` to the model, which answers accordingly.
 - **Arguments are requests, not authorization**, as in n8n: a permanent DNC needs a STOP-keyword turn or a reported
   death; `vehicle_sold` needs a plain disposal statement; deferrals and bare acknowledgments never page a dealer.
-  These checks read the customer's own message. n8n's intent-classifier gates have no equivalent here.
+  These checks read the customer's own message. n8n's Intent Classifier gates (protected closes, the deceased /
+  wrong-owner halt and hold in Escalate_To_Human) run only when its output is supplied in `node_data`.
 - **`write_mode`.** `dry_run` (default): tools that change data run every check and read, then report what they
   would write (`dry_run: true`) and write nothing. `live`: they write to the backend's Postgres like n8n does;
   an escalation row pages the dealer.
@@ -234,6 +235,20 @@ and `email_thread_key` (the customer's email address). See [Customer records](#c
 - `model` is required; there is no default model. If it is missing or unknown, you get a `400` that lists the configured model ids. If you also send `model_type`, it must match the model, and the list is narrowed to that type.
 - `agent` picks the system prompt: `app/prompts/agents/<agent>_system_instr.md` : `general` (default), `inventory`, `scheduling` (file `schedule_system_instr.md`), `value_data_collection`, `service_trade_reply` (see `GET /v1/agents`). Names are case-insensitive, spaces and hyphens count as `_`, and `schedule` is accepted for `scheduling`. Without it (or with `""`) the `general` agent answers; an unknown agent is a `400 unknown_agent` listing the choices. The files are only read. Their n8n `{{ … }}` expressions are replaced by the fallback each one names (e.g. `'the dealership'`), and the date/time ones point to a `RUNTIME CONTEXT` block with today's date and time (America/New_York). The system message is: agent prompt → runtime context → your own `system` messages → customer records → retrieved knowledge.
 - **Large prompts.** The agent prompts are 8k–14k tokens. The agent prompt always comes first and is byte-identical on every request, so providers cache it: Anthropic via `cache_control` (cached reads cost ~10% and are faster), OpenAI and Ollama by reusing a matching prefix on their own. Set `context_window` on each model: the prompt is then fitted inside it. The agent's instructions are never cut; the reply's `max_tokens` is reserved; then the latest message, recent turns (up to half of what is left), retrieved knowledge and customer history get shrunk budgets, and the oldest turns are dropped. If even the agent prompt doesn't fit you get `400 context_window_exceeded` instead of a silently truncated prompt. **Ollama:** its default context length is far smaller than these prompts and it silently drops the start of a longer prompt. Start it with e.g. `OLLAMA_CONTEXT_LENGTH=32768` and set the model's `context_window` to the same value. Small local models (1B–3B) follow 14k-token rulebooks poorly; prefer 8B+ for these agents.
+- `node_data` supplies what the n8n workflow's other nodes hand the agent, keyed by node name, each shaped like that
+  node's `$('<node>').first().json` (`Get Recent SMS History` is a list of rows). The prompt's `{{ … }}` expressions
+  and the tools read a supplied node first, the way the workflow does; anything left out keeps the usual lookup or
+  fallback. `GET /v1/agents` lists the nodes and fields each agent reads (`inputs`). A supplied `Lookup Lead` must
+  belong to `tenant_id`, and lets the lead-based tools run without a thread key. Example:
+
+  ```json
+  "node_data": {
+    "Get tenant emails & phone": {"main_phone": "(703) 555-0142", "hours_of_operation": {"timezone": "America/New_York"}},
+    "Lookup Lead": {"id": "<lead uuid>", "first_name": "Sam"},
+    "Insert Log": {"id": 9137, "tenant_id": "<tenant uuid>", "lead_id": "<lead uuid>", "direction": "inbound"},
+    "Intent Classifier": {"intent": "inventory", "active_buying_request": true, "explicit_decline_or_deferral": false}
+  }
+  ```
 - Values the request leaves unset come from that model's config entry.
 - If a model fails upstream (5xx, 429, timeout, unreachable, bad key), its `fallbacks` are tried in order. A request the model rejects as invalid (400) is not retried on another model. When streaming, fallback happens only before the first token is sent.
 
@@ -267,7 +282,7 @@ Lists the configured models (`id`, `type`, `provider`, `model`). API keys are ne
 
 ### `GET /v1/agents` (and `GET /v1/playground/agents` for the chat tester)
 
-Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`) and `prompt_tokens` (estimated size of its instructions).
+Lists the agents a request can name in `agent`: `id`, `label`, `default` (true for `general`), `prompt_tokens` (estimated size of its instructions), `tools`, and `inputs`: the upstream workflow nodes its prompt and tools read (`node`, `fields`, `list_of_rows`, `used_by`), i.e. what `node_data` can supply. The chat tester shows one JSON box per input under **Workflow data**.
 
 ### `GET /v1/models/remote`
 

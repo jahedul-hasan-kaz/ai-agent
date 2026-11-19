@@ -3,10 +3,11 @@ Agent system prompts: one per file in app/prompts/agents/<agent>_system_instr.md
 
 The files are read, never written. Each is prepared once per process:
 
-* n8n template expressions (`{{ $('Get tenant').first().json.slug ?? 'the dealership' }}`) only make sense
-  inside the n8n workflow, so each is replaced by the fallback the expression itself names ('the dealership').
-  The current date and time point to a small runtime block instead (see `runtime_context`), so the prompt
-  text stays byte-identical across requests and providers can cache it as a prefix.
+* n8n template expressions (`{{ $('Get tenant').first().json.slug ?? 'the dealership' }}`) read other workflow
+  nodes. A request may supply those nodes' values (`node_data`, see app/services/node_data.py); then the value
+  is filled in. Otherwise each expression is replaced by the fallback it names ('the dealership'), and the
+  current date and time point to a small runtime block instead (see `runtime_context`), so the prompt text
+  stays byte-identical across requests and providers can cache it as a prefix.
 * Whitespace is tidied (trailing spaces, runs of blank lines). No wording changes.
 
 The request's `agent` picks the file; without one the `general` agent is used.
@@ -17,10 +18,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+import json
+from typing import Any, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.llm.base import LLMError
+from app.services import node_data as nd
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent / "prompts" / "agents"
 SUFFIX = "_system_instr.md"
@@ -40,11 +43,22 @@ _DATE_FIELDS = {"date": "current date", "time_12h": "current time", "day_of_week
 class AgentPrompt:
     id: str
     label: str
-    text: str
+    text: str  # with every node expression at its fallback
+    raw: str = ""  # the file as written, n8n expressions included
 
     @property
     def tokens(self) -> int:
         return estimate_tokens(self.text)
+
+    def render(self, node_data: Optional[nd.NodeData] = None) -> str:
+        """The prompt with the supplied node values filled in; `text` when none of its nodes were supplied."""
+        if not node_data or not self.raw or not any(name in node_data for name, _ in nd.refs(self.raw)):
+            return self.text
+        return prepare(self.raw, node_data)
+
+    def inputs(self) -> dict[str, list[str]]:
+        """{node: [fields]} this prompt reads from other workflow nodes."""
+        return nd.merge_fields(nd.refs(self.raw))
 
 
 def estimate_tokens(text: str) -> int:
@@ -70,7 +84,8 @@ def agents() -> dict[str, AgentPrompt]:
     for path in sorted(AGENTS_DIR.glob(f"*{SUFFIX}")):
         agent_id = path.name[: -len(SUFFIX)]
         agent_id = FILE_TO_AGENT.get(agent_id, agent_id)
-        found[agent_id] = AgentPrompt(agent_id, agent_id.replace("_", " ").title(), prepare(path.read_text(encoding="utf-8")))
+        raw = path.read_text(encoding="utf-8")
+        found[agent_id] = AgentPrompt(agent_id, agent_id.replace("_", " ").title(), prepare(raw), raw)
     return dict(sorted(found.items(), key=lambda kv: (kv[0] != DEFAULT_AGENT, kv[0])))
 
 
@@ -86,14 +101,30 @@ def get_agent(agent_id: Optional[str]) -> AgentPrompt:
     return agent
 
 
-def prepare(raw: str) -> str:
-    text = _EXPRESSION.sub(lambda m: _render(m.group(1)), raw)
+def prepare(raw: str, node_data: Optional[nd.NodeData] = None) -> str:
+    text = _EXPRESSION.sub(lambda m: _render(m.group(1), node_data), raw)
     text = "\n".join(line.rstrip() for line in text.splitlines())
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def _render(expression: str) -> str:
-    """The value an n8n expression falls back to when its node has no data."""
+def _supplied(expression: str, node_data: Optional[nd.NodeData]) -> Optional[str]:
+    """The expression's value from the supplied nodes: the first node field it reads that was given (so
+    `a.x || a.y || 'z'` takes x, else y). None when it reads none of them. A whole JS function (`=>`) is not
+    evaluated."""
+    if not node_data or "=>" in expression:
+        return None
+    for name, path in nd.refs(expression):
+        v = nd.value(node_data, name, path)
+        if nd.present(v):
+            return v if isinstance(v, str) else json.dumps(v, default=str) if isinstance(v, (dict, list)) else str(v)
+    return None
+
+
+def _render(expression: str, node_data: Optional[nd.NodeData] = None) -> str:
+    """The expression's value from the supplied nodes, else the value it falls back to when its node has no data."""
+    supplied = _supplied(expression, node_data)
+    if supplied is not None:
+        return supplied
     if "Get Current Date/Time" in expression:
         field = next((label for key, label in _DATE_FIELDS.items() if f"json.{key}" in expression), "current date and time")
         return f"(see {field} under RUNTIME CONTEXT)"
@@ -107,18 +138,34 @@ def _render(expression: str) -> str:
     return "unavailable" if value.startswith("__") else value
 
 
-def runtime_context(now: Optional[datetime] = None, timezone: str = DEFAULT_TIMEZONE) -> str:
+def node_timezone(node_data: Optional[nd.NodeData]) -> Optional[str]:
+    """The dealership's timezone from a supplied "Get tenant emails & phone", in the workflow's order."""
+    for path in ("hours_of_operation.timezone", "timezone", "time_zone"):
+        v = nd.value(node_data, "Get tenant emails & phone", path)
+        if nd.present(v):
+            return str(v)
+    return None
+
+
+def runtime_context(
+    now: Optional[datetime] = None, timezone: str = DEFAULT_TIMEZONE, node_data: Optional[nd.NodeData] = None
+) -> str:
     """The per-request facts the prompt's date/time placeholders point to. Kept out of the agent text
-    so that text is an unchanging, cacheable prefix."""
+    so that text is an unchanging, cacheable prefix. A supplied "Get Current Date/Time" node, or the
+    dealership timezone in "Get tenant emails & phone", replaces the server's clock."""
+    timezone = node_timezone(node_data) or timezone
     try:
         tz = ZoneInfo(timezone)
     except ZoneInfoNotFoundError:
         tz, timezone = ZoneInfo("UTC"), "UTC"
     local = (now or datetime.now(tz)).astimezone(tz)
     clock = f"{local:%I:%M %p}".lstrip("0")
+    given: dict[str, Any] = nd.node(node_data, "Get Current Date/Time") or {}
+    given = given if isinstance(given, dict) else {}
+    pick = lambda key, default: str(given[key]) if nd.present(given.get(key)) else default  # noqa: E731
     return (
         "=== RUNTIME CONTEXT ===\n"
-        f"Current date: {local:%Y-%m-%d}\n"
-        f"Current time: {clock} ({timezone})\n"
-        f"Day of week: {local:%A}"
+        f"Current date: {pick('date', f'{local:%Y-%m-%d}')}\n"
+        f"Current time: {pick('time_12h', clock)} ({timezone})\n"
+        f"Day of week: {pick('day_of_week', f'{local:%A}')}"
     )

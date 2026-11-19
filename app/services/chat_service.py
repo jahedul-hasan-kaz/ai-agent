@@ -99,7 +99,11 @@ class ChatService:
         # it as a prefix; then today's date/time, the caller's own system messages, the customer's records
         # and history, and the knowledge retrieved for this message last, nearest the conversation.
         agent = get_agent(req.agent)
-        system = [agent.text, runtime_context()] + [m.content for m in req.messages if m.role == "system"]
+        # Supplied workflow node values (node_data) fill the prompt's n8n expressions; see app/services/node_data.py.
+        agent_text = agent.render(req.node_data)
+        system = [agent_text, runtime_context(node_data=req.node_data)] + [
+            m.content for m in req.messages if m.role == "system"
+        ]
         all_turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
         wants_customer = bool(req.tenant_id and (req.sms_thread_key or req.email_thread_key))
         customer_settings = self.customers.settings if self.customers else CustomerConfig()
@@ -126,7 +130,7 @@ class ChatService:
             len(turns), len(all_turns),
         )
         return LLMRequest(
-            cache_prefix=len(agent.text),
+            cache_prefix=len(agent_text),
             messages=messages,
             temperature=req.temperature,
             top_p=req.top_p,
@@ -235,7 +239,7 @@ class ChatService:
             return None, {}
         agent = get_agent(req.agent)
         turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
-        ctx = await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns)
+        ctx = await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns, req.node_data)
         offered, skipped = self.tools.offered(agent.id, ctx)
         if offered or skipped:
             logger.info(

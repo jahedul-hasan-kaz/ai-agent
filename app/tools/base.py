@@ -14,6 +14,7 @@ from loguru import logger
 from app.customer.store import email_variants, phone_variants
 from app.llm.settings import ToolsConfig
 from app.rag.retriever import Retriever
+from app.services import node_data as nd
 
 # The n8n node each tool replaces: a Supabase node (db), a Code tool (code) or an HTTP Request tool (http).
 ToolKind = Literal["db", "code", "http"]
@@ -22,7 +23,7 @@ DEFAULT_TIMEZONE = "America/New_York"
 
 # Requirements a tool can declare. A tool whose requirements this request cannot meet is not offered to the model.
 NEEDS_TENANT = "tenant"  # tenant_id on the request
-NEEDS_CUSTOMER = "customer"  # tenant_id plus sms_thread_key / email_thread_key: the lead can be looked up
+NEEDS_CUSTOMER = "customer"  # tenant_id plus a thread key or a supplied "Lookup Lead": there is a lead to act on
 NEEDS_SMS = "sms"  # tenant_id plus sms_thread_key
 NEEDS_DB = "db"  # the backend's Postgres is reachable
 NEEDS_RETRIEVER = "retriever"  # the docs knowledge base (rag) is configured
@@ -42,6 +43,9 @@ class Tool:
     run: Callable[["ToolContext", dict[str, Any]], Awaitable[dict[str, Any]]]
     needs: tuple[str, ...] = ()
     writes: bool = False  # changes data; in write_mode=dry_run it reports what it would write instead
+    # (node, field) the n8n tool reads from upstream workflow nodes (via its Tool Context): what a caller can
+    # supply in node_data. field '' means the node's whole output.
+    inputs: tuple[tuple[str, str], ...] = ()
 
 
 def schema(properties: Optional[dict[str, Any]] = None, required: Optional[list[str]] = None) -> dict[str, Any]:
@@ -102,6 +106,9 @@ class ToolContext:
     pool: Optional[asyncpg.Pool] = None
     http: Optional[httpx.AsyncClient] = None
     retriever: Optional[Retriever] = None
+    # Outputs of the workflow's upstream nodes the caller supplied (request.node_data). Each lookup below
+    # returns the supplied node first, the way n8n's Tool Context node reads it, and falls back to the database.
+    node_data: dict[str, Any] = field(default_factory=dict)
     now_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # Appointment times Validate_Appointment confirmed during this completion (confirmed_datetime -> result).
     validated_appointments: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -115,12 +122,18 @@ class ToolContext:
 
     @property
     def inbound_text(self) -> str:
-        """The customer's latest message."""
+        """The customer's latest message (n8n "Normalize Phone".text)."""
+        supplied = nd.value(self.node_data, "Normalize Phone", "text")
+        if nd.present(supplied):
+            return str(supplied)
         return next((str(t["content"]) for t in reversed(self.turns) if t["role"] == "user"), "")
 
     @property
     def combined_message(self) -> str:
         """The customer's messages since our last reply (n8n "Combine messages")."""
+        supplied = nd.value(self.node_data, "Combine messages", "combinedMessage")
+        if nd.present(supplied):
+            return str(supplied)
         texts: list[str] = []
         for t in reversed(self.turns):
             if t["role"] != "user":
@@ -161,13 +174,34 @@ class ToolContext:
             self._cache[key] = await load()
         return self._cache[key]
 
+    def supplied(self, node: str) -> dict[str, Any]:
+        """A supplied node's output object, {} when it was not supplied."""
+        value = nd.node(self.node_data, node)
+        return value if isinstance(value, dict) else {}
+
+    @property
+    def has_supplied_lead(self) -> bool:
+        return self.tenant_id is not None and nd.present(self.supplied("Lookup Lead").get("id"))
+
+    def classifier(self) -> Optional[dict[str, Any]]:
+        """The supplied "Intent Classifier" output; None when not supplied (it has no equivalent here)."""
+        value = nd.node(self.node_data, "Intent Classifier")
+        return value if isinstance(value, dict) else None
+
     async def lead(self) -> dict[str, Any]:
-        """The customer's lead (n8n "Lookup Lead"). Raises ToolFailure when there is none."""
+        """The customer's lead (n8n "Lookup Lead"). A supplied lead with an id is used as is; supplied fields
+        without an id are laid over the looked-up one. Raises ToolFailure when there is none."""
+        supplied = self.supplied("Lookup Lead")
+
         async def load() -> Optional[dict[str, Any]]:
-            if self.tenant_id is None or not (self.phones() or self.emails()):
+            if self.has_supplied_lead:  # tenant_id is always the request's: the request model rejects any other
+                return {**supplied, "id": str(supplied["id"]), "tenant_id": self.tenant_id}
+            row = None
+            if self.tenant_id is not None and (self.phones() or self.emails()):
+                row = await self.need_pool().fetchrow(_LEAD_SQL, self.tenant_id, self.phones(), self.emails())
+            if not row:
                 return None
-            row = await self.need_pool().fetchrow(_LEAD_SQL, self.tenant_id, self.phones(), self.emails())
-            return dict(row) if row else None
+            return {**dict(row), **{k: v for k, v in supplied.items() if k not in ("id", "tenant_id")}}
 
         lead = await self._cached("lead", load)
         if lead is None:
@@ -190,20 +224,34 @@ class ToolContext:
             tenant["hours_of_operation"] = _json(tenant.get("hours_of_operation")) or {}
             return tenant
 
-        return await self._cached("tenant", load)
+        async def merged() -> dict[str, Any]:
+            # n8n "Get tenant" and "Get tenant emails & phone": supplied fields win over the dealership row.
+            tenant = {**(await load()), **self.supplied("Get tenant"), **self.supplied("Get tenant emails & phone")}
+            tenant["hours_of_operation"] = _json(tenant.get("hours_of_operation")) or {}
+            return tenant
+
+        return await self._cached("tenant", merged)
 
     async def timezone_name(self) -> str:
-        hours = (await self.tenant()).get("hours_of_operation") or {}
-        name = hours.get("timezone") if isinstance(hours, dict) else None
-        try:
-            ZoneInfo(name or DEFAULT_TIMEZONE)
-            return name or DEFAULT_TIMEZONE
-        except (ZoneInfoNotFoundError, ValueError):
-            return DEFAULT_TIMEZONE
+        """The dealership's timezone, in the workflow's order: hours_of_operation.timezone, timezone, time_zone."""
+        tenant = await self.tenant()
+        hours = tenant.get("hours_of_operation") or {}
+        candidates = [hours.get("timezone") if isinstance(hours, dict) else None, tenant.get("timezone"), tenant.get("time_zone")]
+        for name in candidates:
+            if nd.present(name):
+                try:
+                    ZoneInfo(str(name))
+                    return str(name)
+                except (ZoneInfoNotFoundError, ValueError):
+                    break
+        return DEFAULT_TIMEZONE
 
     async def vehicle(self) -> Optional[dict[str, Any]]:
-        """The vehicle this conversation is about (n8n "Lookup Lead Vehicle"), None when the lead has none."""
+        """The vehicle this conversation is about (n8n "Lookup Lead Vehicle"), None when the lead has none. A supplied
+        "Lookup Lead Vehicle" is used as is."""
         async def load() -> Optional[dict[str, Any]]:
+            if self.supplied("Lookup Lead Vehicle"):
+                return self.supplied("Lookup Lead Vehicle")
             lead = await self.lead()
             pool = self.need_pool()
             try:
@@ -227,8 +275,11 @@ class ToolContext:
 
     async def saved_inbound(self) -> Optional[dict[str, Any]]:
         """The sms_log row of the customer's latest message, when the caller already stored it (n8n "Insert Log").
-        Only a row whose text is this turn's message counts: it is the receipt that this turn really happened."""
+        Only a row whose text is this turn's message counts: it is the receipt that this turn really happened.
+        A supplied "Insert Log" row is taken as that receipt."""
         async def load() -> Optional[dict[str, Any]]:
+            if nd.present(self.supplied("Insert Log").get("id")):
+                return self.supplied("Insert Log")
             if self.tenant_id is None or not self.phones() or self.pool is None:
                 return None
             row = await self.pool.fetchrow(_LATEST_INBOUND_SQL, self.tenant_id, self.phones())
@@ -239,7 +290,13 @@ class ToolContext:
         return await self._cached("saved_inbound", load)
 
     async def recent_sms(self, limit: int) -> list[dict[str, Any]]:
-        """The thread's newest `limit` SMS messages, oldest first."""
+        """The thread's newest `limit` SMS messages, oldest first. A supplied "Get Recent SMS History" is used the way
+        n8n's Tool Context node uses it: rows with a message and a direction, ordered by created_at."""
+        supplied = nd.node(self.node_data, "Get Recent SMS History")
+        if isinstance(supplied, list):
+            rows = [r for r in supplied if isinstance(r, dict) and isinstance(r.get("message"), str) and r.get("direction")]
+            rows.sort(key=lambda r: str(r.get("created_at") or ""))
+            return rows[-limit:] if limit > 0 else []
         if self.tenant_id is None or not self.phones():
             return []
         rows = await self.need_pool().fetch(_RECENT_SMS_SQL, self.tenant_id, self.phones(), limit)

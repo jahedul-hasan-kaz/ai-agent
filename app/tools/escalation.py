@@ -4,7 +4,8 @@ Tools that hand a conversation to people or stop contact.
 * Escalate_To_Human (n8n Code tool): inserts an `escalations` row; a Postgres trigger then alerts the dealer and
   pauses the cadence. The n8n text gates are kept: a deferral ("let me talk to my wife"), a bare acknowledgment
   ("ok thanks") or a passive "I'll wait for the call" never pages anyone, and a repeated decline is sent to
-  Suppress_Lead. Gates that read the n8n intent classifier have no equivalent here and are not applied.
+  Suppress_Lead. The gates that read n8n's Intent Classifier (protected closes; the deceased / wrong-owner halt and
+  hold) run when the caller supplies that node's output in node_data; without it only the text gates apply.
 * Suppress_Lead (n8n Code tool): public.apply_lead_suppression. Model arguments are requests, not authorization:
   a permanent DNC needs a STOP-keyword turn or a reported death, and vehicle_sold needs a plain disposal statement,
   both read from the customer's own message here, not from the model.
@@ -137,6 +138,49 @@ def is_repeat_decline(text: str) -> bool:
     )
 
 
+# n8n protectedCloseCategory: classifier intents that are never a protected close, and those that are complaint work.
+_NOT_PROTECTED = {"low_signal", "vehicle_unavailable", "future_callback", "relay_request", "missed_callback",
+                  "hardship_disclosed", "credit_denial", "deceased", "self_harm"}
+_COMPLAINT_INTENTS = {"complaint", "service_complaint", "legal_threat"}
+
+
+def protected_close_category(classifier: dict[str, Any], text: str) -> Optional[str]:
+    """n8n protectedCloseCategory: the close that Suppress_Lead owns for this turn, from the Intent Classifier's
+    output, or None. A supervisor request is complaint work even when it concerns unwanted messages."""
+    c, intent = classifier, classifier.get("intent")
+    if intent in _NOT_PROTECTED:
+        return None
+    if c.get("complaint_signals") is True or intent in _COMPLAINT_INTENTS:
+        return None
+    if c.get("internal_employee") is True or intent == "internal_employee":
+        return "internal_employee"
+    if c.get("wrong_owner") is True or intent == "wrong_owner":
+        return "wrong_owner"
+    # A requested capability with an explicitly cleared decline flag beats a raw repeated-call refusal.
+    if c.get("explicit_decline_or_deferral") is False and (
+        intent in ("value_request", "inventory", "scheduling") or c.get("active_buying_request") is True
+        or c.get("active_finance_question") is True or c.get("active_appraisal_scheduling") is True
+    ):
+        return None
+    if intent == "repeat_decline" or is_repeat_decline(text):
+        return "repeat_decline"
+    if c.get("explicit_decline_or_deferral") is True or intent in ("not_interested_soft", "polite_decline", "optin_decline"):
+        return "polite_decline"
+    return None
+
+
+_MAX_BIGINT = 9223372036854775807
+
+
+def _receipt_binds(saved: dict[str, Any], tenant_id: Any, lead_id: Any) -> bool:
+    """n8n's sales-handoff receipt check: this dealership's and lead's inbound row with a positive bigint id."""
+    raw = str(saved.get("id") or "")
+    return (
+        str(saved.get("tenant_id") or "") == str(tenant_id or "") and str(saved.get("lead_id") or "") == str(lead_id or "")
+        and saved.get("direction") == "inbound" and re.fullmatch(r"[1-9]\d*", raw) is not None and int(raw) <= _MAX_BIGINT
+    )
+
+
 def _sales_handoff_id(inbound_id: int) -> str:
     """n8n's deterministic escalation id for one inbound message: a retry of the same turn never pages twice."""
     h = format(inbound_id, "016x")
@@ -162,9 +206,14 @@ async def _summary(ctx: ToolContext) -> str:
     lines = []
     if rows:
         for r in rows:
-            at = r["created_at"]
+            at = r.get("created_at")
+            if isinstance(at, str):  # a supplied "Get Recent SMS History" row
+                try:
+                    at = datetime.fromisoformat(at.replace("Z", "+00:00"))
+                except ValueError:
+                    at = None
             stamp = at.astimezone(tz).strftime("%m/%d/%Y, %I:%M %p").replace(", 0", ", ") if isinstance(at, datetime) else "date/time unavailable"
-            lines.append(f"[{stamp}] {'Customer' if r['direction'] == 'inbound' else 'AI'}: {r['message'] or ''}")
+            lines.append(f"[{stamp}] {'Customer' if r.get('direction') == 'inbound' else 'AI'}: {r.get('message') or ''}")
     else:
         for t in [t for t in ctx.turns if t["role"] in ("user", "assistant")][-5:]:
             lines.append(f"[date/time unavailable] {'Customer' if t['role'] == 'user' else 'AI'}: {t['content']}")
@@ -178,13 +227,20 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
     urgency = urgency if urgency in ("normal", "high", "urgent") else "normal"
     raw_category = str(args.get("category") or "").strip().lower()
     category = raw_category if raw_category in CATEGORIES else ("relay_request" if named_person else "other")
+    legacy_dnc = bool(args.get("permanent_dnc") or args.get("permanentDnc"))
     inbound = ctx.inbound_text
     turn_text = ctx.combined_message or inbound
+    classifier = ctx.classifier()
 
     if _PASSIVE_CALLBACK.match(turn_text.strip()):
         return {"ok": False, "error": "passive_callback_continuation_no_new_page",
                 "message": "This is only an acknowledgment of a prior callback. Do not page again or claim new delivery."}
-    if category not in ("complaint", "service_complaint") and is_repeat_decline(turn_text):
+    protected = (
+        protected_close_category(classifier, turn_text) if classifier is not None
+        # Without the classifier only its text rule applies; a complaint category stands in for complaint_signals.
+        else "repeat_decline" if category not in ("complaint", "service_complaint") and is_repeat_decline(turn_text) else None
+    )
+    if protected:
         return {"ok": False, "error": "protected_close_uses_suppression",
                 "message": "Use Suppress_Lead for this protected close. Do not promise a dealer page."}
     if not reason:
@@ -201,11 +257,11 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
 
     lead = await ctx.lead()
     saved = await ctx.saved_inbound()
-    handoff_id = (
-        _sales_handoff_id(int(saved["id"]))
-        if saved and category in ("other", "relay_request", "value_request") and str(saved.get("lead_id")) == str(lead["id"])
-        else None
-    )
+    sales = category in ("other", "relay_request", "value_request")
+    if sales and saved and not _receipt_binds(saved, lead["tenant_id"], lead["id"]):
+        return {"ok": False, "error": "missing_current_saved_inbound",
+                "message": "No follow-up was verified. Ask the customer to contact the dealership directly."}
+    handoff_id = _sales_handoff_id(int(saved["id"])) if sales and saved else None
     summary = (
         f"[AI escalation] reason={reason}; category={category}; named_person={named_person or 'n/a'}; "
         f"urgency={urgency}\n\nLast 5 messages:\n{await _summary(ctx)}"
@@ -216,12 +272,14 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
         "inbound_message": inbound, "conversation_summary": summary,
     }
     result = {"ok": True, "permanent_dnc": False, "dnc_applied": False, "category": category, "urgency": urgency,
-              "named_person": named_person or None,
-              "message": "The request is saved for dealership review. Do not claim notification delivery or promise a call time."}
+              "named_person": named_person or None}
     if handoff_id:
-        result.update({"inbound_log_id": str(saved["id"]), "action": "sales_handoff", "dealer_delivery_verified": False})
+        result.update({"tenant_id": str(lead["tenant_id"]), "lead_id": str(lead["id"]), "inbound_log_id": str(saved["id"]),
+                       "action": "sales_handoff", "dealer_delivery_verified": False})
     if not ctx.live:
-        return {**result, "escalation_id": None, "dry_run": True, "would_insert": {k: v for k, v in row.items() if k != "conversation_summary"}}
+        suppression = await _classifier_suppression(ctx, classifier, lead, reason, legacy_dnc)
+        return {**result, "suppression": suppression, "message": _escalation_message(suppression), "escalation_id": None,
+                "dry_run": True, "would_insert": {k: v for k, v in row.items() if k != "conversation_summary"}}
 
     pool = ctx.need_pool()
     inserted = await pool.fetchrow(
@@ -232,7 +290,68 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
         inserted = await pool.fetchrow(_EXISTING_ESCALATION_SQL, handoff_id, row["tenant_id"], row["lead_id"])
     if inserted is None:
         raise ToolFailure("the escalation could not be saved")
-    return {**result, "escalation_id": str(inserted["id"]), "category": inserted["category"]}
+    suppression = await _classifier_suppression(ctx, classifier, lead, reason, legacy_dnc)
+    return {**result, "suppression": suppression, "message": _escalation_message(suppression),
+            "escalation_id": str(inserted["id"]), "category": inserted["category"]}
+
+
+async def _classifier_suppression(
+    ctx: ToolContext, classifier: Optional[dict[str, Any]], lead: dict[str, Any], reason: str, legacy_dnc: bool
+) -> dict[str, Any]:
+    """n8n permanent-dnc-halt-hold-v1: when the Intent Classifier detected a deceased owner or a disputed ownership,
+    the escalation also halts cadences and holds sends (never a DNC). Evidence is the classifier's, never the
+    model's; without a supplied classifier nothing is written."""
+    c = classifier or {}
+    category = "deceased" if c.get("deceased") is True else (
+        "wrong_owner" if c.get("wrong_owner") is True or c.get("intent") == "wrong_owner" else None)
+    out: dict[str, Any] = {
+        "schema_version": "escalate_to_human_suppression.v1", "legacy_permanent_dnc_requested": legacy_dnc,
+        "legacy_permanent_dnc_honored": False, "category": category, "attempted": False, "ok": False,
+        "permanent_dnc": False, "dnc_applied": False, "cadences_halted": 0, "hold_applied": False,
+        "suppression_effective": False, "nothing_written": True, "error": None, "result": None,
+    }
+    if not category:
+        return out
+    out["attempted"] = True
+    reason_text = f"escalate_to_human:{category}: {reason}"[:500]
+    if ctx.live:
+        try:
+            raw = await ctx.need_pool().fetchval(_APPLY_SUPPRESSION_SQL, lead["id"], lead["tenant_id"], reason_text, False, False, category)
+            r = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except Exception as exc:  # noqa: BLE001 - the escalation is saved; report the suppression failure
+            out["error"] = f"{type(exc).__name__}: {exc}"[:200] or "apply_lead_suppression failed"
+            return out
+    else:  # what the RPC does with p_permanent_dnc=false for these categories: halt + hold
+        r = {"success": True, "dry_run": True, "dnc_applied": False, "hold_applied": True, "cadences_halted": 1}
+    r = r if isinstance(r, dict) else {}
+    halted = r.get("cadences_halted") if isinstance(r.get("cadences_halted"), int) else 0
+    out.update(result=r, ok=r.get("success") is True, dnc_applied=r.get("dnc_applied") is True,
+               permanent_dnc=r.get("dnc_applied") is True, cadences_halted=halted, hold_applied=r.get("hold_applied") is True)
+    out["suppression_effective"] = out["ok"] and (
+        r.get("suppression_effective") is True or out["dnc_applied"] or halted > 0 or out["hold_applied"])
+    out["nothing_written"] = not out["suppression_effective"]
+    return out
+
+
+def _escalation_message(suppression: dict[str, Any]) -> str:
+    """n8n's receipt message, with its note scoped to this tool's own suppression result."""
+    base = "The request is saved for dealership review. Do not claim notification delivery or promise a call time."
+    if not suppression["attempted"]:
+        if suppression["legacy_permanent_dnc_requested"]:
+            return base + (" permanent_dnc was IGNORED: this tool never DNCs a contact and wrote no suppression. Do NOT "
+                           "claim the customer is off the list or that messages will stop on the strength of THIS result; "
+                           "if suppression is warranted, call Suppress_Lead with its category and follow its receipt.")
+        return base
+    if suppression["suppression_effective"]:
+        return base + (f" Active cadences were halted and a send hold is in place for this contact "
+                       f"({suppression['category']}; no DNC row). Do NOT claim the customer was unsubscribed, removed or DNC'd.")
+    error = f": {suppression['error']}" if suppression["error"] else ""
+    note = (f" This tool wrote no suppression for this contact ({suppression['category']}{error}). Do NOT claim the "
+            "customer is off the list or that messages will stop on the strength of THIS result; only a Suppress_Lead "
+            "receipt with suppression_effective=true licenses that.")
+    if suppression["category"] == "deceased":
+        note += " Suppress_Lead(suppression_category=deceased) owns the deceased suppression."
+    return base + note
 
 
 ESCALATE_TO_HUMAN = Tool(
@@ -254,6 +373,18 @@ ESCALATE_TO_HUMAN = Tool(
     run=escalate_to_human,
     needs=(NEEDS_CUSTOMER, NEEDS_DB),
     writes=True,
+    # n8n Tool Context fields this tool reads (escalate_to_human.js).
+    inputs=(
+        ("Lookup Lead", "id"), ("Normalize Phone", "text"), ("Combine messages", "combinedMessage"),
+        ("Get Recent SMS History", ""), ("Get tenant emails & phone", "hours_of_operation.timezone"),
+        ("Get tenant emails & phone", "timezone"), ("Insert Log", "id"), ("Insert Log", "tenant_id"),
+        ("Insert Log", "lead_id"), ("Insert Log", "direction"),
+        ("Intent Classifier", "intent"), ("Intent Classifier", "complaint_signals"),
+        ("Intent Classifier", "internal_employee"), ("Intent Classifier", "wrong_owner"),
+        ("Intent Classifier", "deceased"), ("Intent Classifier", "explicit_decline_or_deferral"),
+        ("Intent Classifier", "active_buying_request"), ("Intent Classifier", "active_finance_question"),
+        ("Intent Classifier", "active_appraisal_scheduling"),
+    ),
 )
 
 # ---------------------------------------------------------------------------------------------------------------

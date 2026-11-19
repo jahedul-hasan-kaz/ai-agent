@@ -370,4 +370,6 @@ SEARCH_INVENTORY = Tool(
     }, ["make"]),
     run=search_inventory,
     needs=(NEEDS_TENANT, NEEDS_DB, NEEDS_MARKETCHECK),
+    # search_inventory.js reads only tool_ctx.tenant_id ("Lookup Lead"); here that is the request's tenant_id.
+    inputs=(),
 )
