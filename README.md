@@ -183,6 +183,18 @@ not offered even though some prompts mention them.
 - **Models.** Set `"supports_tools": false` on a model that cannot call functions; it then answers from the prompt
   (as a fallback, it gets earlier tool calls as plain text). A model that rejects `tools` with a 400 is retried
   without them. Send `"use_tools": false` on a request to turn tools off for it.
+- **Reasoning with tools.** `"tool_reasoning_effort": "low"` on a model raises a `none` reasoning effort (from the
+  request or `extra_body`) to `low` whenever tools are offered. gpt-oss with no reasoning often writes tool calls
+  as text instead of calling them. Unset, nothing changes.
+- **Reply checks** (`app/services/reply_guard.py`, only when tools are offered):
+  - A tool call the model wrote into its reply as JSON (`{"name": "Escalate_To_Human", "arguments": {...}}`,
+    `{"Escalate_To_Human": {...}}`, also in a ```` ``` ```` fence) for a tool it was offered is run as a real call, so
+    its checks apply, and the model writes the reply from the result. It is reported with `"from_text": true`.
+    After the last allowed round the JSON is only removed. JSON naming no offered tool is left as is.
+  - A reply that claims a hand-off ("I've flagged it for the team", "a manager will call you") with no
+    `Escalate_To_Human` call returning `ok: true` this turn is asked once more, with the reason added to the
+    system prompt. If the claim comes back, its sentences are removed; if nothing is left, the reply becomes
+    "Thanks for letting me know." plus the dealership's main number when known.
 - **Streaming.** With tools, the tool rounds run first and the reply arrives as one content chunk; without tools
   it streams token by token as before.
 

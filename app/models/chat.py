@@ -191,6 +191,10 @@ class ToolCallInfo(BaseModel):
     latency_ms: int
     error: Optional[str] = None
     dry_run: bool = Field(False, description="The tool changes data but tools.write_mode is dry_run: nothing was written.")
+    from_text: bool = Field(
+        False, description="The model wrote this call into its reply as JSON instead of calling the tool; the gateway "
+        "ran it as a real call and kept the JSON out of the reply.",
+    )
 
 
 class Choice(BaseModel):

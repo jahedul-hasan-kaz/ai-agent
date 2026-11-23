@@ -70,6 +70,12 @@ class ModelConfig(BaseModel):
         description="The model can call the agent's tools (function calling). Set false for servers or small local "
         "models that reject `tools`; that model then answers from the prompt alone.",
     )
+    tool_reasoning_effort: Optional[Literal["low", "medium", "high"]] = Field(
+        None,
+        description="The least reasoning_effort used when the request offers tools: a request (or extra_body) asking "
+        "for 'none' gets this instead. For models that write tool calls as plain text when not reasoning (gpt-oss: "
+        "'low'). Unset: no change.",
+    )
 
     fallbacks: list[str] = Field(default_factory=list, description="Model ids tried, in order, if this one fails.")
 

@@ -212,7 +212,8 @@ def _combined(failures: list[tuple[str, LLMError]]) -> LLMError:
 
 def _with_defaults(request: LLMRequest, model: ModelConfig) -> LLMRequest:
     """Fill what the caller left unset from this model's config entry. A model that cannot call tools gets none,
-    and any tool calls already made in the conversation as plain text."""
+    and any tool calls already made in the conversation as plain text. With tools offered, a 'none' reasoning
+    effort is raised to the model's tool_reasoning_effort."""
     request = replace(
         request,
         max_tokens=request.max_tokens or model.max_tokens,
@@ -220,4 +221,9 @@ def _with_defaults(request: LLMRequest, model: ModelConfig) -> LLMRequest:
     )
     if not model.supports_tools and (request.tools or any(m["role"] == "tool" for m in request.messages)):
         request = replace(request, tools=[], tool_choice=None, messages=flatten_tool_turns(request.messages))
+    if request.tools and model.tool_reasoning_effort:
+        effort = request.reasoning_effort or model.extra_body.get("reasoning_effort")
+        if effort == "none":
+            logger.info("model {}: reasoning_effort none -> {} (tools offered)", model.id, model.tool_reasoning_effort)
+            request = replace(request, reasoning_effort=model.tool_reasoning_effort)
     return request

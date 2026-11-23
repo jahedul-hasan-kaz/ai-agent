@@ -71,6 +71,7 @@ class ToolRun:
     latency_ms: int
     error: Optional[str] = None
     dry_run: bool = False
+    from_text: bool = False  # the model wrote the call into its reply instead of the tool-call channel
 
 
 def agent_tools(agent_id: str) -> list[Tool]:

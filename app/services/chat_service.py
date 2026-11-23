@@ -26,6 +26,7 @@ from app.rag.context import build_context
 from app.rag.retriever import Retriever, build_query
 from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, estimate_tokens, get_agent, runtime_context
 from app.services.node_data import DATABASE_NODES
+from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
 from app.tools.base import Tool, ToolContext
 from app.tools.registry import ToolRun, ToolRunner, spec
 
@@ -268,6 +269,19 @@ class ChatService:
         logger.info("Stored exchange {} inbound={} outbound={}", done.channel, done.inbound_id, done.outbound_id)
         return StoredMessages(channel=done.channel, inbound_id=done.inbound_id, outbound_id=done.outbound_id)
 
+    @staticmethod
+    async def _without_claims(reply: str, ctx: Optional[ToolContext]) -> str:
+        """The reply minus its unbacked hand-off claims; when nothing is left, a neutral line with the dealership's
+        number when it is known."""
+        rest = without_claims(reply)
+        if rest:
+            return rest
+        tenant = await ctx.tenant() if ctx is not None and ctx.tenant_id is not None else None  # never raises
+        phone = (tenant or {}).get("main_phone")
+        return f"Thanks for letting me know. You can reach our team directly at {phone}." if phone else (
+            "Thanks for letting me know."
+        )
+
     async def _tooling(
         self, req: ChatCompletionRequest, ctx: Optional[ToolContext] = None
     ) -> tuple[Optional[ToolContext], dict[str, Tool]]:
@@ -299,6 +313,7 @@ class ChatService:
         answer: Optional[_Answer] = None
         runs: list[ToolRun] = []
         rounds = 0
+        rechecked = False
         while True:
             final_round = bool(request.tools) and rounds >= self.tools.settings.max_iterations
             if final_round:
@@ -312,24 +327,49 @@ class ChatService:
                     request, tools = replace(request, tools=[], tool_choice=None), {}
                     continue
                 raise
+            result, from_text = done.result, set()
+            if tools and not result.tool_calls:
+                # A call written into the reply as JSON: run it for real (or, when no more calls are allowed, just
+                # keep the JSON out of the reply). See app/services/reply_guard.py.
+                calls, rest = text_tool_calls(result.content, tools)
+                if calls:
+                    logger.warning("model {} wrote tool calls as text: {}", done.model.id, ", ".join(c.name for c in calls))
+                    if final_round:
+                        result = replace(result, content=rest)
+                    else:
+                        result = replace(result, content="", tool_calls=calls)
+                        from_text = {c.id for c in calls}
             answer = _Answer(
                 model=done.model,
-                result=done.result,
+                result=result,
                 fallback_used=done.fallback_used or (answer.fallback_used if answer else False),
                 prompt_tokens=(answer.prompt_tokens if answer else 0) + done.result.prompt_tokens,
                 completion_tokens=(answer.completion_tokens if answer else 0) + done.result.completion_tokens,
                 runs=runs,
             )
-            if not done.result.tool_calls or not tools or final_round:
+            if not result.tool_calls or not tools or final_round:
+                claim = unevidenced_claim(result.content, runs) if tools else None
+                if claim and not rechecked:
+                    # Claims a hand-off no Escalate_To_Human call backs: ask once more, told why.
+                    logger.warning("reply claims a hand-off without an escalation ({!r}); asking again", claim)
+                    rechecked = True
+                    system = {**request.messages[0], "content": request.messages[0]["content"] + retry_note(runs, tools)}
+                    request = replace(request, messages=[system, *request.messages[1:]])
+                    continue
+                if claim:
+                    answer.result = replace(result, content=await self._without_claims(result.content, ctx))
+                    logger.warning("reply still claimed a hand-off ({!r}); claim removed", claim)
                 break
             rounds += 1
             request.messages.append({
-                "role": "assistant", "content": done.result.content, "tool_calls": done.result.tool_calls,
-                "anthropic_blocks": done.result.anthropic_blocks,
+                "role": "assistant", "content": result.content, "tool_calls": result.tool_calls,
+                "anthropic_blocks": result.anthropic_blocks,
             })
             # In order, one at a time: a later call may depend on an earlier one (Validate, then Save).
-            for call in done.result.tool_calls:
+            for call in result.tool_calls:
                 content, run = await self.tools.run(tools, call, ctx)
+                if call.id in from_text:
+                    run.from_text = True
                 runs.append(run)
                 request.messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": content})
         if not answer.result.content.strip():
