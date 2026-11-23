@@ -156,3 +156,27 @@ def test_no_check_without_tools(client, providers):  # noqa: F811
     data = _post(client, agent="scheduling", use_tools=False).json()
     assert data["choices"][0]["message"]["content"] == "I've flagged it for the team."
     assert len(providers["claude"].requests) == 1
+
+
+# ---- tool names written loosely -------------------------------------------------------------------------------
+
+
+def test_a_tool_name_in_another_case_runs_the_tool(client, providers):  # noqa: F811
+    # The value prompt writes "update_mileage" for Update_mileage; any such spelling runs the real tool.
+    providers["claude"].script = [
+        LLMResult("", "tool_calls", 1, 1, [ToolCall("t1", "validate_appointment", {"proposed_time": "Tuesday at 2pm"}),
+                                           ToolCall("t2", "functions.Validate-Appointment", {"proposed_time": "Tuesday at 3pm"})]),
+        LLMResult("See you Tuesday!", "stop", 1, 1),
+    ]
+    data = _post(client, agent="scheduling").json()
+    assert data["tools_used"] == ["Validate_Appointment"]
+    assert [c["ok"] for c in data["tool_calls"]] == [True, True]
+
+
+def test_a_name_that_is_no_offered_tool_is_still_unknown(client, providers):  # noqa: F811
+    providers["claude"].script = [
+        LLMResult("", "tool_calls", 1, 1, [ToolCall("t1", "validate", {})]),
+        LLMResult("Ok.", "stop", 1, 1),
+    ]
+    [call] = _post(client, agent="scheduling").json()["tool_calls"]
+    assert call["ok"] is False and "unknown tool" in call["error"]

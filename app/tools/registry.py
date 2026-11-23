@@ -11,6 +11,7 @@ times out returns `{"ok": false, "error": ...}` to the model; it never fails the
 """
 import asyncio
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -72,6 +73,17 @@ class ToolRun:
     error: Optional[str] = None
     dry_run: bool = False
     from_text: bool = False  # the model wrote the call into its reply instead of the tool-call channel
+
+
+def _by_loose_name(tools: dict[str, Tool], name: str) -> Optional[Tool]:
+    """The offered tool a slightly misspelled call means: same name ignoring case, a `functions.` prefix and spaces
+    or hyphens for underscores. The prompts themselves write some names differently (`update_mileage` for
+    Update_mileage). No two tools differ only in these ways, so this never picks between tools."""
+    def key(n: str) -> str:
+        n = n.strip().lower()
+        return re.sub(r"[\s\-]+", "_", n[len("functions."):] if n.startswith("functions.") else n)
+    wanted = key(name)
+    return next((t for n, t in tools.items() if key(n) == wanted), None)
 
 
 def agent_tools(agent_id: str) -> list[Tool]:
@@ -188,7 +200,9 @@ class ToolRunner:
     async def run(self, tools: dict[str, Tool], call: ToolCall, ctx: ToolContext) -> tuple[str, ToolRun]:
         """Execute one call. Returns the text the model gets back and the record the API reports."""
         started = time.perf_counter()
-        tool = tools.get(call.name)
+        tool = tools.get(call.name) or _by_loose_name(tools, call.name)
+        if tool is not None and tool.name != call.name:
+            logger.info("tool name {!r} taken as {}", call.name, tool.name)
         error: Optional[str] = None
         result: dict[str, Any]
         if tool is None:
@@ -216,12 +230,12 @@ class ToolRunner:
         if len(content) > self.settings.max_result_chars:
             content = content[: self.settings.max_result_chars] + " …[truncated]"
         record = ToolRun(
-            id=call.id, name=call.name, kind=tool.kind if tool else "unknown", arguments=_short(call.arguments),
+            id=call.id, name=tool.name if tool else call.name, kind=tool.kind if tool else "unknown", arguments=_short(call.arguments),
             ok=error is None, latency_ms=int((time.perf_counter() - started) * 1000), error=error,
             dry_run=bool(result.get("dry_run")) if isinstance(result, dict) else False,
         )
         logger.info(
-            "tool {} ok={} ms={}{}{}", call.name, record.ok, record.latency_ms, " dry_run" if record.dry_run else "",
+            "tool {} ok={} ms={}{}{}", record.name, record.ok, record.latency_ms, " dry_run" if record.dry_run else "",
             f" error={error}" if error else "",
         )
         return content, record
