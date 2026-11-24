@@ -152,3 +152,25 @@ async def test_inbound_receipt_from_the_database_must_bind_to_the_lead():
 async def test_legacy_permanent_dnc_is_reported_as_ignored():
     result = await escalate_to_human(_ctx({}), {**ARGS, "permanent_dnc": True})
     assert result["suppression"]["legacy_permanent_dnc_requested"] is True and "IGNORED" in result["message"]
+
+
+async def test_classifier_complaint_sets_category_and_urgency():
+    # "Your offer is insulting, get me a manager": the model sent relay_request/normal; the classifier says complaint.
+    result = await escalate_to_human(
+        _ctx({"Intent Classifier": {"intent": "complaint", "complaint_signals": True}}, "Your offer is insulting, get me a manager"),
+        {"reason": "wants a manager", "category": "relay_request", "named_person": "manager", "urgency": "normal"},
+    )
+    assert result["ok"] and (result["category"], result["urgency"]) == ("complaint", "high")
+    assert result["classifier_adjusted"] == {"category": ["relay_request", "complaint"], "urgency": ["normal", "high"]}
+    assert result["would_insert"]["category"] == "complaint"
+
+
+async def test_classifier_complaint_keeps_urgent_and_service_complaint():
+    ctx = _ctx({"Intent Classifier": {"complaint_signals": True}}, "The repair was botched, I want a manager")
+    result = await escalate_to_human(ctx, {"reason": "x", "category": "service_complaint", "urgency": "urgent"})
+    assert (result["category"], result["urgency"]) == ("service_complaint", "urgent") and "classifier_adjusted" not in result
+
+
+async def test_no_classifier_keeps_the_models_choice():
+    result = await escalate_to_human(_ctx({}, "Can someone call me?"), {"reason": "x", "category": "relay_request", "urgency": "normal"})
+    assert (result["category"], result["urgency"]) == ("relay_request", "normal") and "classifier_adjusted" not in result

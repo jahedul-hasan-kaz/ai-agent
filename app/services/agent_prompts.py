@@ -26,6 +26,9 @@ from app.llm.base import LLMError
 from app.services import node_data as nd
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent / "prompts" / "agents"
+# Gateway-side rules added after an agent's prompt (app/prompts/addenda/<agent>.md), so the agent files stay copies
+# of the n8n prompts.
+ADDENDA_DIR = Path(__file__).resolve().parent.parent / "prompts" / "addenda"
 SUFFIX = "_system_instr.md"
 DEFAULT_AGENT = "general"
 DEFAULT_TIMEZONE = "America/New_York"
@@ -87,6 +90,14 @@ def agents() -> dict[str, AgentPrompt]:
         raw = path.read_text(encoding="utf-8")
         found[agent_id] = AgentPrompt(agent_id, agent_id.replace("_", " ").title(), prepare(raw), raw)
     return dict(sorted(found.items(), key=lambda kv: (kv[0] != DEFAULT_AGENT, kv[0])))
+
+
+@lru_cache
+def addendum(agent_id: str) -> str:
+    """The gateway's own rules for this agent: addenda/common.md (every agent), then addenda/<agent>.md; '' when
+    neither exists."""
+    parts = [ADDENDA_DIR / "common.md", ADDENDA_DIR / f"{agent_id}.md"]
+    return "\n\n".join(p.read_text(encoding="utf-8").strip() for p in parts if p.is_file())
 
 
 def get_agent(agent_id: Optional[str]) -> AgentPrompt:

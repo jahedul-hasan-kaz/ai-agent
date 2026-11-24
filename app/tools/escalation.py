@@ -16,6 +16,8 @@ from datetime import datetime
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
+from loguru import logger
+
 from app.tools.base import NEEDS_CUSTOMER, NEEDS_DB, Tool, ToolContext, ToolFailure, schema
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -231,6 +233,18 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
     inbound = ctx.inbound_text
     turn_text = ctx.combined_message or inbound
     classifier = ctx.classifier()
+    adjusted = None
+    if classifier is not None and (
+        classifier.get("complaint_signals") is True or classifier.get("intent") in _COMPLAINT_INTENTS
+    ):
+        # The classifier already judged this a complaint: the dealer queue gets that label and at least high urgency,
+        # whatever the model picked (a service complaint keeps its own lane).
+        fixed_category = category if category == "service_complaint" else "complaint"
+        fixed_urgency = "urgent" if urgency == "urgent" else "high"
+        if (fixed_category, fixed_urgency) != (category, urgency):
+            adjusted = {"category": [category, fixed_category], "urgency": [urgency, fixed_urgency]}
+            logger.info("Escalate_To_Human: classifier complaint, {} -> {}/{}", f"{category}/{urgency}", fixed_category, fixed_urgency)
+            category, urgency = fixed_category, fixed_urgency
 
     if _PASSIVE_CALLBACK.match(turn_text.strip()):
         return {"ok": False, "error": "passive_callback_continuation_no_new_page",
@@ -273,6 +287,8 @@ async def escalate_to_human(ctx: ToolContext, args: dict[str, Any]) -> dict[str,
     }
     result = {"ok": True, "permanent_dnc": False, "dnc_applied": False, "category": category, "urgency": urgency,
               "named_person": named_person or None}
+    if adjusted:
+        result["classifier_adjusted"] = adjusted
     if handoff_id:
         result.update({"tenant_id": str(lead["tenant_id"]), "lead_id": str(lead["id"]), "inbound_log_id": str(saved["id"]),
                        "action": "sales_handoff", "dealer_delivery_verified": False})

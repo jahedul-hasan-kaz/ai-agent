@@ -24,7 +24,7 @@ from app.models.chat import (
 )
 from app.rag.context import build_context
 from app.rag.retriever import Retriever, build_query
-from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, estimate_tokens, get_agent, runtime_context
+from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, runtime_context
 from app.services.node_data import DATABASE_NODES
 from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
 from app.tools.base import Tool, ToolContext
@@ -141,7 +141,8 @@ class ChatService:
         if nodes:
             logger.info("prompt nodes: {}", ", ".join(sorted(nodes)))
         agent_text = agent.render(nodes)
-        system = [agent_text, runtime_context()] + [
+        # The agent's gateway addendum, if any, right after its prompt: also unchanging, so it stays in the cached part.
+        system = [agent_text, *filter(None, [addendum(agent.id)]), runtime_context()] + [
             m.content for m in req.messages if m.role == "system"
         ]
         all_turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]

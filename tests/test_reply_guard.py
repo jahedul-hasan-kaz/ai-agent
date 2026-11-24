@@ -180,3 +180,18 @@ def test_a_name_that_is_no_offered_tool_is_still_unknown(client, providers):  # 
     ]
     [call] = _post(client, agent="scheduling").json()["tool_calls"]
     assert call["ok"] is False and "unknown tool" in call["error"]
+
+
+# ---- agent addenda --------------------------------------------------------------------------------------------
+
+
+def test_the_value_agent_gets_its_gateway_addendum(client, providers):  # noqa: F811
+    from app.services.agent_prompts import get_agent
+    _post(client, agent="value_data_collection", use_tools=False)
+    _post(client, agent="scheduling", use_tools=False)
+    value, scheduling = (r.messages[0]["content"] for r in providers["claude"].requests)
+    agent_text = get_agent("value_data_collection").text
+    assert value.startswith(agent_text) and "value-data-collection-notes-v1" in value
+    assert value.index("value-data-collection-notes-v1") < value.index("=== RUNTIME CONTEXT ===")
+    assert "value-data-collection-notes-v1" not in scheduling
+    assert "escalation-tone-v1" in value and "escalation-tone-v1" in scheduling
