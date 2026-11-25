@@ -182,6 +182,21 @@ not offered even though some prompts mention them.
     `Escalate_To_Human` call returning `ok: true` this turn is asked once more, with the reason added to the
     system prompt. If the claim comes back, its sentences are removed; if nothing is left, the reply becomes
     "Thanks for letting me know." plus the dealership's main number when known.
+- **`<NOOP>` replies** (`app/services/noop_router.py`, a port of n8n's Empty Reply Detector and NOOP Pivot
+  Re-Router; on by default, `"reroute_noop": false` turns it off). Spellings like `noop` or `<<NOOP>>` become
+  `<NOOP>`. Then:
+  - the customer only closed the conversation ("thanks", "ok bye", "see you then", an emoji reaction): `<NOOP>`
+    stays, nothing to send. A bare "yes" answering our question is not a closing;
+  - a tool already handled the turn (Suppress_Lead ok, or an Escalate_To_Human attempt): `<NOOP>` stays;
+  - otherwise the message was real: the turn runs once more on the agent its wording points to (scheduling words,
+    then value words, then stock words, else `general`; never the agent that declined, except `general`, which gets a
+    second opinion);
+  - if that agent declines too, n8n's safe fallback text is sent (complaint, general or value wording) and
+    Escalate_To_Human pages the team (its usual checks and `write_mode` apply). Two `general` declines send nothing
+    but still page.
+
+  The response's `routing` (`outcome`, `from_agent`, `to_agent`) says which happened; the Chat Tester footer shows
+  it. When streaming without tools, a reply that could still be `<NOOP>` is held back until it is clear.
 - **Streaming.** With tools, the tool rounds run first and the reply arrives as one content chunk; without tools
   it streams token by token as before.
 

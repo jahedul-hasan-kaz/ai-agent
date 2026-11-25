@@ -86,6 +86,13 @@ class ChatCompletionRequest(BaseModel):
         "nodes (the tenant, lead, vehicle, SMS history, ...) and the clock (Get Current Date/Time) are not accepted: "
         "the gateway reads or computes them itself. GET /v1/agents lists the nodes and fields each agent reads.",
     )
+    reroute_noop: bool = Field(
+        True,
+        description="When the agent answers <NOOP> to a real message (it belongs to another agent), run the turn once "
+        "more on the agent its wording points to, as the n8n workflow does; if that agent declines too, send the "
+        "workflow's safe fallback and page a person. A <NOOP> to a closing ('thanks', 'ok bye') stays <NOOP>. "
+        "false: return the agent's <NOOP> as is.",
+    )
     empty_retries: int = Field(
         3,
         ge=0,
@@ -203,6 +210,19 @@ class Choice(BaseModel):
     finish_reason: Optional[str] = None
 
 
+class RoutingInfo(BaseModel):
+    """What happened when the agent answered <NOOP> (see `reroute_noop`)."""
+
+    outcome: Literal["silent_closing", "silent_suppressed", "silent_escalated", "rerouted", "fallback", "silent_confirmed"] = Field(
+        ..., description="silent_closing: the customer only closed the conversation, nothing to send. silent_suppressed / "
+        "silent_escalated: a tool already handled the turn. rerouted: another agent answered. fallback: that agent "
+        "declined too; the safe fallback was sent and a person paged. silent_confirmed: general declined twice; "
+        "nothing sent, a person paged.",
+    )
+    from_agent: str = Field(..., description="The agent that answered <NOOP>.")
+    to_agent: Optional[str] = Field(None, description="The agent the turn was run on next.")
+
+
 class ChatCompletionResponse(BaseModel):
     id: str
     object: Literal["chat.completion"] = "chat.completion"
@@ -218,6 +238,7 @@ class ChatCompletionResponse(BaseModel):
     )
     tool_calls: list[ToolCallInfo] = Field(default_factory=list, description="Every tool call, with its arguments and outcome.")
     stored: Optional[StoredMessages] = None
+    routing: Optional[RoutingInfo] = Field(None, description="Set when the agent answered <NOOP>; see `reroute_noop`.")
 
 
 class ModelInfo(BaseModel):

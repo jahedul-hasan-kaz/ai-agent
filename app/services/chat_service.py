@@ -17,15 +17,20 @@ from app.models.chat import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     Choice,
+    RoutingInfo,
     StoredMessages,
     ToolCallInfo,
     Usage,
 )
 from app.knowledge.base import knowledge_base_system
-from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, runtime_context
+from app.services import noop_router
+from app.services.agent_prompts import (
+    AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, normalize, runtime_context,
+)
 from app.services.node_data import DATABASE_NODES
 from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
 from app.tools.base import Tool, ToolContext
+from app.llm.base import ToolCall
 from app.tools.registry import ToolRun, ToolRunner, spec
 
 # Role markers and separators per message.
@@ -52,6 +57,12 @@ class _Answer:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     runs: list[ToolRun] = field(default_factory=list)
+    ctx: Optional[ToolContext] = None  # the request's lookups, reused when a <NOOP> turn is handled
+    routing: Optional[noop_router.Routing] = None
+
+    @property
+    def routing_info(self) -> Optional[RoutingInfo]:
+        return RoutingInfo(**vars(self.routing)) if self.routing else None
 
     @property
     def tools_used(self) -> list[str]:
@@ -356,11 +367,116 @@ class ChatService:
                 request.messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name, "content": content})
         if not answer.result.content.strip():
             raise LLMError(f"{answer.model.id} kept calling tools without answering", code="empty_response")
+        answer.ctx = ctx
         return answer
+
+    # ---- <NOOP> handling (app/services/noop_router.py) -------------------------------------------------------
+
+    async def _routed_answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
+        return await self._route_noop(req, await self._answer(req, tooling))
+
+    async def _route_noop(self, req: ChatCompletionRequest, answer: _Answer) -> _Answer:
+        """What n8n's Empty Reply Detector and NOOP Pivot Re-Router do with an agent's <NOOP>: silence for a closing,
+        another agent for a real message, and the safe fallback plus a page when that agent declines too."""
+        if not noop_router.is_noop(answer.result.content):
+            return answer
+        answer.result = replace(answer.result, content=noop_router.NOOP)
+        origin = normalize(req.agent)
+        if not req.reroute_noop or origin not in (*noop_router.LANES, noop_router.GENERAL):
+            return answer
+        message, previous = await self._turn_text(req, answer.ctx)
+        if _ran(answer.runs, "Suppress_Lead", ok=True):
+            answer.routing = noop_router.Routing("silent_suppressed", origin)
+        elif _ran(answer.runs, "Escalate_To_Human"):
+            answer.routing = noop_router.Routing("silent_escalated", origin)
+        elif not noop_router.is_substantive(message, previous):
+            answer.routing = noop_router.Routing("silent_closing", origin)
+        if answer.routing:
+            logger.info("<NOOP> from {}: {}", origin, answer.routing.outcome)
+            return answer
+
+        target = noop_router.reroute_target(message, origin)
+        logger.info("<NOOP> from {} on a substantive message: re-running on {}", origin, target)
+        second = await self._answer(req.model_copy(update={"agent": target}))
+        combined = _Answer(
+            model=second.model, result=second.result, fallback_used=answer.fallback_used or second.fallback_used,
+            prompt_tokens=answer.prompt_tokens + second.prompt_tokens,
+            completion_tokens=answer.completion_tokens + second.completion_tokens,
+            runs=answer.runs + second.runs, ctx=second.ctx or answer.ctx,
+        )
+        if not noop_router.is_noop(second.result.content):
+            combined.routing = noop_router.Routing("rerouted", origin, target)
+            return combined
+        combined.result = replace(second.result, content=noop_router.NOOP)
+        if _ran(second.runs, "Suppress_Lead", ok=True):
+            combined.routing = noop_router.Routing("silent_suppressed", origin, target)
+            return combined
+        if _ran(second.runs, "Escalate_To_Human"):
+            combined.routing = noop_router.Routing("silent_escalated", origin, target)
+            return combined
+        complaint = ((req.node_data or {}).get("Intent Classifier") or {}).get("complaint_signals") is True
+        page = await self._page_for_noop(req, origin, combined.ctx, complaint, message)
+        if page:
+            combined.runs.append(page)
+        if origin == noop_router.GENERAL:
+            # Two independent silences agree: send nothing, but a person sees the turn.
+            combined.routing = noop_router.Routing("silent_confirmed", origin, target)
+        else:
+            first_name = await self._first_name(combined.ctx)
+            combined.result = replace(combined.result, content=noop_router.fallback_text(target, first_name, complaint))
+            combined.routing = noop_router.Routing("fallback", origin, target)
+        logger.warning("<NOOP> from {} and {}: {}", origin, target, combined.routing.outcome)
+        return combined
+
+    async def _turn_text(self, req: ChatCompletionRequest, ctx: Optional[ToolContext]) -> tuple[str, str]:
+        """The customer's messages since our last reply (n8n "Combine messages") and our last message before them
+        (from the conversation, else the thread's SMS log)."""
+        turns = [m for m in req.messages if m.role != "system"]
+        tail: list[str] = []
+        for m in reversed(turns):
+            if m.role != "user":
+                break
+            tail.append(m.content)
+        message = " ".join(reversed(tail))
+        previous = next((m.content for m in reversed(turns[: len(turns) - len(tail)]) if m.role == "assistant"), "")
+        if not previous and ctx is not None and ctx.pool is not None:
+            try:
+                recent = await ctx.recent_sms(5)
+                previous = next((str(r["message"]) for r in reversed(recent) if r["direction"] == "outbound"), "")
+            except Exception as exc:  # noqa: BLE001 - only refines the closing check
+                logger.info("<NOOP>: recent outbound not loaded ({})", type(exc).__name__)
+        return message, previous
+
+    @staticmethod
+    async def _first_name(ctx: Optional[ToolContext]) -> str:
+        if ctx is None or ctx.tenant_id is None:
+            return ""
+        try:
+            return str((await ctx.lead()).get("first_name") or "")
+        except Exception:  # noqa: BLE001 - no lead: the fallback has a name-less form
+            return ""
+
+    async def _page_for_noop(
+        self, req: ChatCompletionRequest, origin: str, ctx: Optional[ToolContext], complaint: bool, message: str
+    ) -> Optional[ToolRun]:
+        """n8n's escalation_required for a turn no agent answered: Escalate_To_Human, with its usual checks and
+        write_mode. Skipped when tools are off or the request has no customer to escalate."""
+        if self.tools is None or not self.tools.settings.enabled or not req.use_tools:
+            return None
+        ctx = ctx or await self._context(req)
+        offered = {t.name: t for t in self.tools.offered(origin, ctx)[0]} if ctx else {}
+        if "Escalate_To_Human" not in offered:
+            return None
+        call = ToolCall("call_noop_fallback", "Escalate_To_Human", {
+            "reason": f"No agent could answer the customer's message; the safe fallback was used: {message[:300]}",
+            "category": "complaint" if complaint else "other", "urgency": "high" if complaint else "normal",
+        })
+        _, run = await self.tools.run(offered, call, ctx)
+        return run
 
     async def complete(self, req: ChatCompletionRequest) -> ChatCompletionResponse:
         started = time.perf_counter()
-        answer = await self._answer(req)
+        answer = await self._routed_answer(req)
         latency_ms = _elapsed_ms(started)
         usage = Usage.of(answer.prompt_tokens, answer.completion_tokens)
         reply = answer.result.content.strip()
@@ -386,6 +502,7 @@ class ChatService:
             tools_used=answer.tools_used,
             tool_calls=answer.tool_calls,
             stored=stored,
+            routing=answer.routing_info,
         )
 
     def stream(self, req: ChatCompletionRequest) -> AsyncIterator[str]:
@@ -423,7 +540,7 @@ class ChatService:
         try:
             tooling = await self._tooling(req, await self._context(req))
             if tooling[1]:
-                answer = await self._answer(req, tooling)
+                answer = await self._routed_answer(req, tooling)
                 reply = answer.result.content.strip()
                 yield _event(chunk(answer.model, {"role": "assistant", "content": ""}))
                 yield _event(chunk(answer.model, {"content": reply}))
@@ -431,6 +548,8 @@ class ChatService:
                     answer.model, answer.result.finish_reason, answer.prompt_tokens, answer.completion_tokens,
                     answer.fallback_used, answer.tools_used, answer.tool_calls,
                 )
+                if answer.routing:
+                    final["routing"] = answer.routing_info.model_dump()
                 stored = await self._store(req, reply)
                 if stored:
                     final["stored"] = stored.model_dump()
@@ -440,23 +559,55 @@ class ChatService:
                 request = await self.build_request(req, tooling[0])
                 async for model, item in self.manager.stream(request, primary.id, empty_retries=req.empty_retries):
                     if isinstance(item, StreamDone):
+                        reply, routing, runs = "".join(parts).strip(), None, []
+                        prompt_tokens, completion_tokens = item.prompt_tokens, item.completion_tokens
+                        fallback_used = model.id != primary.id
+                        if first and noop_router.is_noop(reply):
+                            # Nothing was sent yet: handle the <NOOP> as a complete() reply would be.
+                            answer = await self._route_noop(req, _Answer(
+                                model, LLMResult(reply, item.finish_reason, prompt_tokens, completion_tokens),
+                                fallback_used, prompt_tokens, completion_tokens, ctx=tooling[0],
+                            ))
+                            model, reply, routing, runs = answer.model, answer.result.content.strip(), answer.routing_info, answer.runs
+                            prompt_tokens, completion_tokens = answer.prompt_tokens, answer.completion_tokens
+                            fallback_used = answer.fallback_used
+                        if first:
+                            yield _event(chunk(model, {"role": "assistant", "content": ""}))
+                            yield _event(chunk(model, {"content": reply}))
                         final = final_chunk(
-                            model, item.finish_reason, item.prompt_tokens, item.completion_tokens,
-                            model.id != primary.id, [], [],
+                            model, item.finish_reason, prompt_tokens, completion_tokens, fallback_used,
+                            list(dict.fromkeys(r.name for r in runs)), [ToolCallInfo(**vars(r)) for r in runs],
                         )
-                        stored = await self._store(req, "".join(parts).strip())
+                        if routing:
+                            final["routing"] = routing.model_dump()
+                        stored = await self._store(req, reply)
                         if stored:
                             final["stored"] = stored.model_dump()
                         yield _event(final)
                         continue
+                    parts.append(item)
+                    if first and _could_be_noop("".join(parts)):
+                        continue  # hold back a reply that may still turn out to be <NOOP>
                     if first:
                         yield _event(chunk(model, {"role": "assistant", "content": ""}))
                         first = False
-                    parts.append(item)
+                        item = "".join(parts)
                     yield _event(chunk(model, {"content": item}))
         except LLMError as exc:
             yield _event(error_body(exc))
         yield "data: [DONE]\n\n"
+
+
+def _ran(runs: list[ToolRun], name: str, ok: Optional[bool] = None) -> bool:
+    return any(r.name == name and (ok is None or r.ok == ok) for r in runs)
+
+
+_NOOP_CHARS = set("<>[](){}/noop .!?\"'*`-\u2026")
+
+
+def _could_be_noop(text: str) -> bool:
+    """A streamed reply so far could still become <NOOP> (or one of its spellings)."""
+    return len(text.strip()) <= 12 and set(text.lower()) <= _NOOP_CHARS
 
 
 def _rejects_tools(exc: LLMError) -> bool:
