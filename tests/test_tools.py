@@ -390,3 +390,21 @@ def test_inventory_urls():
     f = {"make": "Ford", "model": "Bronco Sport", "year": "2026"}
     assert customer_inventory_url(row, f, "new") == "https://dealer.com/inventory/new/ford/bronco-sport?year=2026"
     assert customer_inventory_url(row, f, "used") == "https://dealer.com/inventory/used/ford/bronco-sport?years=2026"
+
+
+# ---- a clock time beats a stray availability_date (gateway addition) -------------------------------------------
+
+
+def test_a_named_clock_time_is_validated_even_with_availability_date():
+    # The model sent both: the customer asked for Friday at 3pm, not for Friday's first slot.
+    r = _check("Friday at 3pm", availability_date="Friday", availability_request=False)
+    assert r["is_valid"] is True and r["confirmed_datetime"].startswith("2026-11-20T20:00")  # 3pm New York
+    assert _check("friday at 3", availability_date="Friday")["is_valid"] is True
+
+
+def test_availability_is_kept_without_an_exact_clock_time():
+    assert _check(availability_date="Friday")["reason"] == "availability"  # no proposed_time
+    assert _check("Friday", availability_date="Friday")["reason"] == "availability"  # no clock time
+    assert _check("Friday after 3pm", availability_date="Friday")["reason"] == "availability"  # a range
+    assert _check("Friday at 3pm", availability_date="Friday", availability_request=True)["reason"] == "availability"
+    assert _check("What times do you have available Friday?")["reason"] == "availability"  # n8n wording rule

@@ -31,6 +31,7 @@ from app.services.node_data import DATABASE_NODES
 from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
 from app.tools.base import Tool, ToolContext
 from app.llm.base import ToolCall
+from app.tools.escalation import is_repeat_decline, protected_close_category
 from app.tools.registry import ToolRun, ToolRunner, spec
 
 # Role markers and separators per message.
@@ -373,7 +374,42 @@ class ChatService:
     # ---- <NOOP> handling (app/services/noop_router.py) -------------------------------------------------------
 
     async def _routed_answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
-        return await self._route_noop(req, await self._answer(req, tooling))
+        answer = await self._route_noop(req, await self._answer(req, tooling))
+        return await self._ensure_repeat_decline_suppressed(req, answer)
+
+    _SUPPRESSED_REPLY = "Understood — I'll make sure you don't get further messages from us. Sorry for the bother."
+    _SUPPRESS_FAILED_REPLY = "Sorry for the bother. Reply STOP and you won't receive further messages."
+
+    async def _ensure_repeat_decline_suppressed(self, req: ChatCompletionRequest, answer: _Answer) -> _Answer:
+        """Safety net for the General agent's Repeat decline rule: a customer who says they already declined
+        ("I already told you I'm not interested") must be suppressed (cadence halt + send hold), not just thanked.
+        When the agent answered without calling Suppress_Lead, the gateway calls it (usual checks and write_mode) and
+        uses the prompt's own wording for the result. Only when General answered with text, tools are available,
+        and no Suppress_Lead or successful escalation already happened this turn."""
+        agent = answer.routing.to_agent if answer.routing and answer.routing.outcome == "rerouted" else normalize(req.agent)
+        if (agent != noop_router.GENERAL or noop_router.is_noop(answer.result.content) or self.tools is None
+                or not self.tools.settings.enabled or not req.use_tools
+                or _ran(answer.runs, "Suppress_Lead") or _ran(answer.runs, "Escalate_To_Human", ok=True)):
+            return answer
+        message, _ = await self._turn_text(req, answer.ctx)
+        classifier = ((req.node_data or {}).get("Intent Classifier"))
+        repeat = (protected_close_category(classifier, message) == "repeat_decline" if isinstance(classifier, dict)
+                  else is_repeat_decline(message))
+        if not repeat:
+            return answer
+        ctx = answer.ctx or await self._context(req)
+        offered = {t.name: t for t in self.tools.offered(noop_router.GENERAL, ctx)[0]} if ctx else {}
+        if "Suppress_Lead" not in offered:
+            return answer
+        call = ToolCall("call_repeat_decline", "Suppress_Lead", {
+            "reason": "Customer firmly declined repeat contact", "suppression_category": "repeat_decline",
+        })
+        _, run = await self.tools.run(offered, call, ctx)
+        answer.runs.append(run)
+        reply = self._SUPPRESSED_REPLY if run.ok else self._SUPPRESS_FAILED_REPLY
+        logger.warning("repeat decline without Suppress_Lead: gateway suppressed (ok={}), reply replaced", run.ok)
+        answer.result = replace(answer.result, content=reply)
+        return answer
 
     async def _route_noop(self, req: ChatCompletionRequest, answer: _Answer) -> _Answer:
         """What n8n's Empty Reply Detector and NOOP Pivot Re-Router do with an agent's <NOOP>: silence for a closing,

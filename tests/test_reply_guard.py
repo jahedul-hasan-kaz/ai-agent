@@ -195,3 +195,12 @@ def test_the_value_agent_gets_its_gateway_addendum(client, providers):  # noqa: 
     assert value.index("value-data-collection-notes-v1") < value.index("=== RUNTIME CONTEXT ===")
     assert "value-data-collection-notes-v1" not in scheduling
     assert "escalation-tone-v1" in value and "escalation-tone-v1" in scheduling
+
+
+def test_lane_agents_get_their_boundary_addenda(client, providers):  # noqa: F811
+    for agent in ("inventory", "scheduling", "value_data_collection", "general"):
+        _post(client, agent=agent, use_tools=False)
+    inventory, scheduling, value, general = (r.messages[0]["content"] for r in providers["claude"].requests)
+    assert "inventory-lane-boundary-v1" in inventory and "scheduling-lane-boundary-v1" in scheduling
+    assert "LANE BOUNDARY" in value
+    assert not any(m in general for m in ("lane-boundary-v1", "LANE BOUNDARY"))

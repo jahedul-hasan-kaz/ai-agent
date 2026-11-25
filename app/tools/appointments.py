@@ -65,7 +65,17 @@ def check_appointment(
         ) is not None
     )
     reference = availability_date or (availability_text if looks_like_availability else "")
-    if availability_date or looks_like_availability:
+    # Gateway addition to the n8n rule: models sometimes send availability_date alongside a proposed_time that names
+    # an exact clock time ("Friday" + "Friday at 3pm"). The customer asked for that time, so it is validated instead
+    # of answering "what's open Friday" with the day's first slot. Only for that contradictory pair: an explicit
+    # availability_request, a time range ("after 3"), or no clock time keeps the n8n behaviour.
+    explicit_proposed = str(_first(args, "proposed_time", "proposedTime") or "").strip()
+    asked_for_a_time = bool(
+        availability_date and explicit_proposed and _exact_clock(explicit_proposed)
+        and not (args.get("availability_request") or args.get("availabilityRequest"))
+        and parse_proposed_time(explicit_proposed, now) is not None
+    )
+    if (availability_date or looks_like_availability) and not asked_for_a_time:
         return _availability(reference, now, hours)
 
     if not _has_time_anchor(proposed_text):
@@ -154,6 +164,15 @@ def _first(args: dict[str, Any], *keys: str) -> Any:
         if args.get(key) not in (None, ""):
             return args[key]
     return None
+
+
+_RANGE_WORDS = re.compile(r"\b(?:after|before|until|till|between|by|earlier|later|around|ish)\b", re.I)
+_CLOCK_TIME = re.compile(r"\b(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d{2}|noon)(?![\w.])|\bat\s+\d{1,2}\b", re.I)
+
+
+def _exact_clock(text: str) -> bool:
+    """The text names one exact clock time ("3pm", "15:00", "at 3", "noon"), not a range or qualifier."""
+    return _CLOCK_TIME.search(text) is not None and _RANGE_WORDS.search(text) is None
 
 
 def _has_time_anchor(text: str) -> bool:

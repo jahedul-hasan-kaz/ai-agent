@@ -182,6 +182,11 @@ not offered even though some prompts mention them.
     `Escalate_To_Human` call returning `ok: true` this turn is asked once more, with the reason added to the
     system prompt. If the claim comes back, its sentences are removed; if nothing is left, the reply becomes
     "Thanks for letting me know." plus the dealership's main number when known.
+- **Repeat decline safety net.** When General answers a repeat decline ("I already told you I'm not interested", or
+  the classifier's `repeat_decline`) without calling Suppress_Lead, the gateway calls it (`repeat_decline`, usual
+  checks and `write_mode`) and uses the prompt's wording: "Understood — I'll make sure you don't get further messages
+  from us…" on success, "…Reply STOP…" on failure. Skipped after a successful escalation or the agent's own
+  Suppress_Lead call, and for complaints (classifier).
 - **`<NOOP>` replies** (`app/services/noop_router.py`, a port of n8n's Empty Reply Detector and NOOP Pivot
   Re-Router; on by default, `"reroute_noop": false` turns it off). Spellings like `noop` or `<<NOOP>>` become
   `<NOOP>`. Then:

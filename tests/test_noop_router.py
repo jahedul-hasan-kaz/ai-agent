@@ -199,3 +199,77 @@ def test_a_normal_stream_still_streams(client, providers):  # noqa: F811
     events = _stream_lines(client, agent="inventory", use_tools=False, messages=[{"role": "user", "content": "any RAV4s?"}])
     assert _content(events) == "Nope, we have 2 in stock." and "routing" not in events[-1]
     assert len([e for e in events if e.get("choices") and e["choices"][0]["delta"].get("content")]) >= 2
+
+
+# ---- repeat decline safety net (General) ----------------------------------------------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+
+from app.models.chat import ChatCompletionRequest  # noqa: E402
+from app.services.chat_service import ChatService, _Answer  # noqa: E402
+from app.services.noop_router import Routing  # noqa: E402
+from app.tools.registry import ALL_TOOLS, ToolRun  # noqa: E402
+
+FIRST_TIME = "No problem at all - thanks for letting me know. If anything changes down the road, I'm just a text away. Take care!"
+
+
+class StubTools:
+    settings = SimpleNamespace(enabled=True)
+
+    def __init__(self, ok=True):
+        self.ok, self.calls = ok, []
+
+    def offered(self, agent, ctx):
+        return [ALL_TOOLS["Suppress_Lead"]], {}
+
+    async def run(self, tools, call, ctx):
+        self.calls.append(call)
+        return "{}", ToolRun(call.id, call.name, "code", call.arguments, self.ok, 0)
+
+
+def _net(text, agent="general", ok=True, runs=None, routing=None, node_data=None):
+    svc = ChatService(None)
+    svc.tools = StubTools(ok)
+    req = ChatCompletionRequest(model="m", agent=agent, messages=[{"role": "user", "content": text}], node_data=node_data)
+    answer = _Answer(model=None, result=LLMResult(FIRST_TIME, "stop", 1, 1), fallback_used=False, runs=list(runs or []),
+                     ctx=SimpleNamespace(pool=None, tenant_id=None), routing=routing)
+    import asyncio
+    out = asyncio.run(svc._ensure_repeat_decline_suppressed(req, answer))
+    return out, svc.tools.calls
+
+
+def test_repeat_decline_is_suppressed_when_general_forgot():
+    out, calls = _net("I already told you I'm not interested")
+    assert [c.arguments["suppression_category"] for c in calls] == ["repeat_decline"]
+    assert out.result.content.startswith("Understood — I'll make sure you don't get further messages")
+    assert out.tool_calls[-1].name == "Suppress_Lead"
+
+
+def test_failed_suppression_never_promises_messages_stop():
+    out, _ = _net("I already told you I'm not interested", ok=False)
+    assert out.result.content == "Sorry for the bother. Reply STOP and you won't receive further messages."
+
+
+def test_rerouted_to_general_counts():
+    out, calls = _net("I already told you I'm not interested", agent="inventory",
+                      routing=Routing("rerouted", "inventory", "general"))
+    assert calls and out.result.content.startswith("Understood")
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"text": "No thanks"},  # a first decline: the prompt says not to suppress
+    {"text": "I already told you I'm not interested", "agent": "inventory"},  # not General
+    {"text": "I already told you I'm not interested", "runs": [ToolRun("x", "Suppress_Lead", "code", {}, False, 0)]},
+    {"text": "I already told you I'm not interested", "runs": [ToolRun("x", "Escalate_To_Human", "code", {}, True, 0)]},
+    # The classifier says complaint: complaint work, not a protected close.
+    {"text": "I already told you I'm not interested, get me a manager",
+     "node_data": {"Intent Classifier": {"intent": "complaint", "complaint_signals": True}}},
+])
+def test_safety_net_leaves_other_turns_alone(kwargs):
+    out, calls = _net(**kwargs)
+    assert calls == [] and out.result.content == FIRST_TIME
+
+
+def test_classifier_repeat_decline_triggers_it_without_the_words():
+    out, calls = _net("please just stop", node_data={"Intent Classifier": {"intent": "repeat_decline"}})
+    assert calls and out.result.content.startswith("Understood")
