@@ -74,8 +74,8 @@ def client(providers, monkeypatch):
     async def no_store(_):
         return None
 
-    async def tools_without_db(cfg, retriever):
-        return ToolRunner(cfg.tools, "", retriever)
+    async def tools_without_db(cfg):
+        return ToolRunner(cfg.tools, "")
 
     monkeypatch.setattr(config, "load_agent_config", lambda: AgentConfig.model_validate(CONFIG))
     monkeypatch.setattr(main, "ModelManager", lambda cfg: ModelManager(cfg, factory))
@@ -179,9 +179,12 @@ def test_max_iterations_forces_an_answer(client, providers, monkeypatch):
 def test_use_tools_false_and_agents_without_tools(client, providers):
     _post(client, agent="scheduling", use_tools=False)
     assert providers["claude"].requests[-1].tools == []
-    # The general agent's tools all need a customer (tenant + thread key); none is on this request.
-    _post(client, agent="general")
+    # The inventory agent's tools need a customer or the database; neither is on this request.
+    _post(client, agent="inventory")
     assert providers["claude"].requests[-1].tools == []
+    # Knowledge_Base_Search reads the static knowledge base, so it needs nothing.
+    _post(client, agent="general")
+    assert [t.name for t in providers["claude"].requests[-1].tools] == ["Knowledge_Base_Search"]
 
 
 def test_model_without_tool_support_gets_none(client, providers):
@@ -207,7 +210,7 @@ def test_stream_with_tools_sends_tools_used_on_the_last_chunk(client, providers)
     assert "".join(e["choices"][0]["delta"].get("content", "") for e in events) == "Booked in!"
     assert events[-1]["tools_used"] == ["Validate_Appointment"]
     # Without tools the reply still streams token by token.
-    res = _post(client, agent="general", stream=True)
+    res = _post(client, agent="inventory", stream=True)
     events = [json.loads(line[6:]) for line in res.text.splitlines() if line.startswith("data: {")]
     assert events[-1]["tools_used"] == [] and "Streamed." in res.text
 

@@ -45,8 +45,8 @@ class ChatCompletionRequest(BaseModel):
     )
     tenant_id: Optional[UUID] = Field(
         None,
-        description="The dealership (docs.tenant_id) whose knowledge base grounds the reply. "
-        "Without it nothing is retrieved and the model is told it has no dealership facts.",
+        description="The dealership (tenants.id): its records, the customer's lead and the tools are looked up "
+        "with it. The knowledge base is static and sent without it.",
     )
     sms_thread_key: Optional[str] = Field(
         None,

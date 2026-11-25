@@ -13,7 +13,6 @@ from loguru import logger
 
 from app.customer.store import email_variants, phone_variants
 from app.llm.settings import ToolsConfig
-from app.rag.retriever import Retriever
 from app.services import node_data as nd
 
 # The n8n node each tool replaces: a Supabase node (db), a Code tool (code) or an HTTP Request tool (http).
@@ -26,7 +25,6 @@ NEEDS_TENANT = "tenant"  # tenant_id on the request
 NEEDS_CUSTOMER = "customer"  # tenant_id plus sms_thread_key / email_thread_key: the lead can be looked up
 NEEDS_SMS = "sms"  # tenant_id plus sms_thread_key
 NEEDS_DB = "db"  # the backend's Postgres is reachable
-NEEDS_RETRIEVER = "retriever"  # the docs knowledge base (rag) is configured
 NEEDS_MARKETCHECK = "marketcheck"  # tools.marketcheck_api_key is set
 
 
@@ -108,7 +106,6 @@ class ToolContext:
     turns: list[dict[str, Any]]  # the request's non-system messages
     pool: Optional[asyncpg.Pool] = None
     http: Optional[httpx.AsyncClient] = None
-    retriever: Optional[Retriever] = None
     # Outputs of the workflow's computed (non-database) nodes the caller supplied (request.node_data), e.g. the
     # Intent Classifier. Database-backed nodes are never supplied: the lookups below read them.
     node_data: dict[str, Any] = field(default_factory=dict)

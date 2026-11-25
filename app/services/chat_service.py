@@ -1,5 +1,4 @@
 """Turns an API request into a ModelManager call and shapes the answer (JSON or SSE)."""
-import asyncio
 import json
 import time
 import uuid
@@ -8,7 +7,7 @@ from typing import AsyncIterator, Optional
 
 from loguru import logger
 
-from app.customer.context import build_customer_context
+from app.customer.context import build_customer_context, build_query
 from app.customer.store import CustomerRecords, CustomerStore
 from app.llm.base import LLMError, LLMRequest, LLMResult, StreamDone
 from app.llm.model_manager import ModelManager
@@ -22,8 +21,7 @@ from app.models.chat import (
     ToolCallInfo,
     Usage,
 )
-from app.rag.context import build_context
-from app.rag.retriever import Retriever, build_query
+from app.knowledge.base import knowledge_base_system
 from app.services.agent_prompts import AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, runtime_context
 from app.services.node_data import DATABASE_NODES
 from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
@@ -39,7 +37,6 @@ _CUSTOMER_RECORDS_TOKENS = 1000
 @dataclass
 class _Fit:
     turns: list[dict]
-    rag_tokens: int
     history_tokens: int
     window: Optional[int] = None
     reserve: int = 0
@@ -87,12 +84,10 @@ class ChatService:
     def __init__(
         self,
         manager: ModelManager,
-        retriever: Optional[Retriever] = None,
         customers: Optional[CustomerStore] = None,
         tools: Optional[ToolRunner] = None,
     ) -> None:
         self.manager = manager
-        self.retriever = retriever
         self.customers = customers
         self.tools = tools
 
@@ -130,9 +125,9 @@ class ChatService:
         return nodes
 
     async def build_request(self, req: ChatCompletionRequest, ctx: Optional[ToolContext] = None) -> LLMRequest:
-        # Order matters. The agent prompt leads and never changes between requests, so providers can cache
-        # it as a prefix; then today's date/time, the caller's own system messages, the customer's records
-        # and history, and the knowledge retrieved for this message last, nearest the conversation.
+        # Order matters. The unchanging part leads, so providers can cache it as a prefix: the agent prompt, its
+        # gateway addendum and the dealership knowledge base (knowledge_base_system, the same static text for every
+        # agent). Then today's date/time, the caller's own system messages and the customer's records and history.
         agent = get_agent(req.agent)
         # The prompt's n8n expressions get the database-backed nodes read here and the computed ones the caller
         # supplied (node_data); see app/services/node_data.py.
@@ -141,27 +136,16 @@ class ChatService:
         if nodes:
             logger.info("prompt nodes: {}", ", ".join(sorted(nodes)))
         agent_text = agent.render(nodes)
-        # The agent's gateway addendum, if any, right after its prompt: also unchanging, so it stays in the cached part.
-        system = [agent_text, *filter(None, [addendum(agent.id)]), runtime_context()] + [
-            m.content for m in req.messages if m.role == "system"
-        ]
+        static = [agent_text, *filter(None, [addendum(agent.id)]), knowledge_base_system()]
+        system = [*static, runtime_context()] + [m.content for m in req.messages if m.role == "system"]
         all_turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
         wants_customer = bool(req.tenant_id and (req.sms_thread_key or req.email_thread_key))
         customer_settings = self.customers.settings if self.customers else CustomerConfig()
         fit = self._fit(req, agent.id, system, all_turns, wants_customer, customer_settings)
         turns = fit.turns
 
-        retrieval_task = asyncio.create_task(self.retriever.retrieve(turns, req.tenant_id)) if self.retriever else None
         if wants_customer:
             system.append(await self._customer_context(req, turns, fit.history_tokens))
-        if retrieval_task:
-            retrieval = await retrieval_task
-            context = build_context(retrieval, fit.rag_tokens, self.retriever.settings.max_doc_tokens)
-            system.append(context)
-            logger.info(
-                "RAG context status={} docs={} injected_chars={} (~{} tokens)",
-                retrieval.status, len(retrieval.docs) if retrieval.status == "ok" else 0, len(context), len(context) // 4,
-            )
         messages = [{"role": "system", "content": "\n\n".join(system)}] + turns
         prompt_tokens = sum(estimate_tokens(m["content"]) + _TOKENS_PER_MESSAGE for m in messages)
         logger.info(
@@ -171,7 +155,7 @@ class ChatService:
             len(turns), len(all_turns),
         )
         return LLMRequest(
-            cache_prefix=len(agent_text),
+            cache_prefix=len("\n\n".join(static)),
             messages=messages,
             temperature=req.temperature,
             top_p=req.top_p,
@@ -191,16 +175,15 @@ class ChatService:
         """Split the model's context window between the parts of the prompt.
 
         The agent's instructions are never cut: a partial rulebook is worse than a clear error. What is left
-        after them and the reply goes, in order, to the customer's latest message, recent turns (up to half),
-        retrieved knowledge and the customer's records and history, then older turns. The builders get these
-        budgets up front, so they drop whole messages and docs instead of text being chopped mid-way.
+        after them (and the static knowledge base) and the reply goes, in order, to the customer's latest message,
+        recent turns (up to half), the customer's records and history, then older turns. The builders get these
+        budgets up front, so they drop whole messages instead of text being chopped mid-way.
         """
-        rag_want = self.retriever.settings.max_context_tokens if self.retriever else 0
         history_want = customer.history_tokens if wants_customer else 0
         chain = self.manager.candidates(self.manager.resolve(req.model, req.model_type))
         windows = [m.context_window for m in chain if m.context_window]
         if not windows:
-            return _Fit(turns, rag_want, history_want)
+            return _Fit(turns, history_want)
 
         # A fallback may answer, so fit the smallest window in the chain.
         window = min(windows)
@@ -225,8 +208,6 @@ class ChatService:
             used += cost[start]
 
         left = free - used
-        rag = min(rag_want, left * 2 // 5 if history_want else left)
-        left -= rag
         history = 0
         if history_want:
             left -= min(_CUSTOMER_RECORDS_TOKENS, left)
@@ -237,7 +218,7 @@ class ChatService:
             left -= cost[start]
         # The context builders count ~4 chars/token; this budget counts 3.5.
         to_builder = lambda tokens: max(int(tokens * CHARS_PER_TOKEN / 4), 0)  # noqa: E731
-        return _Fit(turns[start:], to_builder(rag), to_builder(history), window, reserve)
+        return _Fit(turns[start:], to_builder(history), window, reserve)
 
     async def _customer_context(self, req: ChatCompletionRequest, turns: list[dict], history_tokens: int) -> str:
         if self.customers is None:

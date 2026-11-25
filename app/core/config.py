@@ -7,9 +7,10 @@ Service configuration. Same split as ai-agent-management:
 
 The JSON schema lives in app/llm/settings.py.
 
-The `docs` knowledge base (RAG) is read from the ai-agent-management Postgres,
-named the same way: `PG_DB_URL` in dev, the `PG_DB_URL_NAME` secret (default
-`pg-db-url`) in prod. That is the transaction pooler (:6543) the backend's API
+The customer records and the tools use the ai-agent-management Postgres, named
+the same way: `PG_DB_URL` in dev, the `PG_DB_URL_NAME` secret (default
+`pg-db-url`) in prod. The `docs` table is not used: the knowledge base is the
+static app/prompts/knowledge_base_system.md. That is the transaction pooler (:6543) the backend's API
 uses; the session-mode PG_DB_URL_DIRECT is kept for LISTEN/NOTIFY and not needed here.
 """
 import json
@@ -42,7 +43,7 @@ class Config:
         self.PG_DB_URL_NAME = os.getenv("PG_DB_URL_NAME", "pg-db-url")
 
     def load_pg_db_url(self) -> str:
-        """Postgres URL holding the `docs` table, or "" when none is configured."""
+        """The backend's Postgres URL (customer records, tools), or "" when none is configured."""
         if self.ENV == EnvEnum.prod:
             from app.core.secret_manager import access_secret_version
 
@@ -67,7 +68,10 @@ class Config:
                 )
 
         try:
-            return AgentConfig.model_validate(json.loads(raw))
+            data = json.loads(raw)
+            if isinstance(data, dict) and "rag" in data:
+                logger.warning("{} has a `rag` section; it is ignored (the knowledge base needs no embedding). Remove it.", source)
+            return AgentConfig.model_validate(data)
         except json.JSONDecodeError as exc:
             raise ConfigError(f"{source} is not valid JSON: {exc}") from exc
         except ValidationError as exc:

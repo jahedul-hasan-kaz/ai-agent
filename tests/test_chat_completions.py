@@ -1,5 +1,4 @@
 import json
-import uuid
 from typing import AsyncIterator
 
 import pytest
@@ -10,9 +9,9 @@ from app.core.config import ConfigError, config
 from app.llm.anthropic_provider import _alternating_turns
 from app.llm.base import LLMError, LLMProvider, LLMRequest, LLMResult, StreamDone, StreamItem
 from app.llm.model_manager import ModelManager
-from app.llm.settings import AgentConfig, ModelConfig, RagConfig
-from app.rag.context import build_context
-from app.rag.retriever import Retrieval, RetrievedDoc, Retriever, build_query, select_relevant
+from app.customer.context import build_query
+from app.knowledge.base import entries, knowledge_base_system, search
+from app.llm.settings import AgentConfig, ModelConfig
 from app.services.agent_prompts import AGENTS_DIR, agents, prepare, runtime_context
 
 CONFIG = {
@@ -89,7 +88,8 @@ def test_named_model(client, providers):
     sent = providers["claude"].requests[0]
     general = agents()["general"].text
     assert sent.messages[0]["role"] == "system" and sent.messages[0]["content"].startswith(general)
-    assert sent.cache_prefix == len(general)
+    # Cached prefix: the agent prompt, its addendum and the static knowledge base.
+    assert sent.cache_prefix == sent.messages[0]["content"].index(knowledge_base_system()) + len(knowledge_base_system())
     # config defaults fill what the caller left unset
     assert sent.temperature == 0.3 and sent.max_tokens == 1000
 
@@ -368,78 +368,46 @@ def test_anthropic_caches_the_agent_prompt():
 
 
 TENANT = "6f1c2b0e-8a4d-4c3e-9b7a-1d2e3f4a5b6c"
-RAG = {"embedding": {"provider": "openai", "model": "text-embedding-3-small", "base_url": "https://api.openai.com/v1"}}
 
 
-def _doc(content, similarity, kind="faq", tags=()):
-    return RetrievedDoc(uuid.uuid4(), kind, list(tags), content, similarity)
-
-
-class FakeRetriever:
-    def __init__(self, result: Retrieval) -> None:
-        self.settings = RagConfig.model_validate(RAG)
-        self.result = result
-        self.calls: list[tuple] = []
-        self.ready = True
-
-    async def retrieve(self, messages, tenant_id):
-        self.calls.append((messages, tenant_id))
-        return self.result
-
-
-@pytest.fixture
-def rag_client(providers, monkeypatch):
-    def factory(settings):
-        providers[settings.id] = FakeProvider(settings)
-        return providers[settings.id]
-
-    async def no_retriever(_):
-        return None
-
-    retriever = FakeRetriever(Retrieval("ok", [_doc("Trade-in appraisals take 15-20 minutes.", 0.82, tags=["trade-in"])]))
-    monkeypatch.setattr(config, "load_agent_config", lambda: AgentConfig.model_validate(CONFIG))
-    monkeypatch.setattr(main, "ModelManager", lambda cfg: ModelManager(cfg, factory))
-    monkeypatch.setattr(main, "_start_retriever", no_retriever)
-    monkeypatch.setattr(main, "_start_customers", _no_store)
-    with TestClient(main.app) as c:
-        main.app.state.chat_service.retriever = retriever
-        yield c, retriever
-
-
-def test_retrieved_docs_ground_the_reply(rag_client, providers):
-    client, retriever = rag_client
-    res = _post(client, model="claude", tenant_id=TENANT,
+@pytest.mark.parametrize("agent", ["general", "inventory", "scheduling", "value_data_collection", "service_trade_reply"])
+def test_every_agent_gets_the_static_knowledge_base(client, providers, agent):
+    res = _post(client, model="claude", tenant_id=TENANT, agent=agent,
                 messages=[{"role": "system", "content": "Dealer is Beechmont Ford."},
                           {"role": "user", "content": "How long does a trade-in appraisal take?"}])
     assert res.status_code == 200, res.text
-    assert str(retriever.calls[0][1]) == TENANT
-    system = providers["claude"].requests[0].messages[0]["content"]
-    assert system.index("RUNTIME CONTEXT") < system.index("Beechmont Ford") < system.index("<knowledge>")
-    assert "[1] faq (tags: trade-in)\nTrade-in appraisals take 15-20 minutes." in system
+    request = providers["claude"].requests[0]
+    system = request.messages[0]["content"]
+    kb = knowledge_base_system()
+    # Static, so it sits in the cached prefix, before the per-request runtime block and caller messages.
+    assert system.index(kb) < system.index("=== RUNTIME CONTEXT ===") < system.index("Beechmont Ford")
+    assert request.cache_prefix == system.index(kb) + len(kb)
+    assert "[faq] tags: trade-in, process, timing\nQ: How long does a trade-in appraisal take?" in system
+    assert "Reply STOP to opt out." in system and "Koons Lincoln of Bethesda is 301-890-5100" in system
 
 
-@pytest.mark.parametrize("status", ["empty", "skipped", "error"])
-def test_no_knowledge_tells_model_not_to_guess(rag_client, providers, status):
-    client, retriever = rag_client
-    retriever.result = Retrieval(status)
-    assert _post(client, model="claude").status_code == 200
-    system = providers["claude"].requests[0].messages[0]["content"]
-    assert "nothing relevant was found" in system and "<knowledge>" not in system
+def test_knowledge_base_needs_no_tenant_or_database(client, providers):
+    assert _post(client, model="llama").status_code == 200
+    assert knowledge_base_system() in providers["llama"].requests[0].messages[0]["content"]
 
 
-def test_streaming_uses_retrieval(rag_client, providers):
-    client, retriever = rag_client
+def test_streaming_gets_the_knowledge_base(client, providers):
     status, lines = _stream(client, model="llama")
     assert status == 200 and lines[-1] == "data: [DONE]"
-    assert "<knowledge>" in providers["llama"].requests[0].messages[0]["content"]
+    assert "[policy] tags: return, satisfaction, guarantee" in providers["llama"].requests[0].messages[0]["content"]
 
 
-def test_select_relevant_drops_weak_far_and_duplicate_docs():
-    docs = [_doc("A", 0.80), _doc(" a ", 0.79), _doc("B", 0.70), _doc("C", 0.60), _doc("D", 0.25)]
-    kept = select_relevant(docs, top_k=5, min_similarity=0.3, max_gap=0.15)
-    assert [d.content for d in kept] == ["A", "B"]  # dup of A, C (0.2 below best), D (under floor) dropped
-    assert select_relevant([_doc("D", 0.25)], 5, 0.3, 0.15) == []
-    assert len(select_relevant([_doc(str(i), 0.9) for i in range(9)], 3, 0.3, 0.15)) == 3
+def test_every_distinct_docs_row_is_an_entry():
+    docs = entries()
+    assert len(docs) == 32  # 37 rows in docs, minus 5 exact copies
+    assert [d.kind for d in docs].count("faq") == 26
+    assert [d.kind for d in docs].count("policy") == 4
+    footers = [d for d in docs if d.kind == "compliance"]
+    assert [d.content for d in footers] == ["UPDATED: Frequently asked questions and answers", "Reply STOP to opt out."]
+    assert footers[0].metadata == {"cadence_name": "Trade Agent AI Outbound", "template_key": "compliance_footer"}
+    first = docs[0]
+    assert first.tags == ["store", "address"] and first.content.startswith("Q: Where are you located?\nA: Sheehy Volkswagen")
+    assert all(d.content for d in docs)
 
 
 def test_build_query_borrows_previous_turn_for_short_follow_ups():
@@ -451,21 +419,11 @@ def test_build_query_borrows_previous_turn_for_short_follow_ups():
     assert build_query(turns) == turns[-1]["content"]
 
 
-def test_context_respects_token_budget():
-    retrieval = Retrieval("ok", [_doc("word " * 500, 0.9), _doc("second doc " * 50, 0.85)])
-    context = build_context(retrieval, max_context_tokens=150, max_doc_tokens=100)
-    knowledge = context.split("<knowledge>\n", 1)[1]
-    assert len(knowledge) <= 150 * 4 + 20
-    assert knowledge.startswith("[1] faq\n") and "…" in knowledge
-
-
-async def test_retriever_skips_without_tenant_and_degrades_when_db_is_down():
-    retriever = Retriever(RagConfig.model_validate(RAG), "postgresql://nobody@127.0.0.1:1/none")
-    assert (await retriever.retrieve([{"role": "user", "content": "hi"}], None)).status == "skipped"
-    await retriever.start()  # unreachable DB: logs, doesn't raise
-    assert not retriever.ready
-    assert (await retriever.retrieve([{"role": "user", "content": "hi"}], uuid.UUID(TENANT))).status == "error"
-    await retriever.aclose()
+def test_search_ranks_by_shared_words_and_tags():
+    phone = search(entries(), "what's your phone number?", 3)
+    assert phone and "301-890-6100" in phone[0][0].content
+    assert search(entries(), "can I trade in my lease", 3)[0][0].tags == ["lease", "lease-end", "buyout"]
+    assert search(entries(), "the", 3) == []
 
 
 def test_base_url_comes_from_config(client, providers):

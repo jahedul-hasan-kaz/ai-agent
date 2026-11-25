@@ -12,9 +12,8 @@ from app.customer.store import CustomerStore
 from app.core.config import EnvEnum, config
 from app.llm.base import LLMError
 from app.llm.model_manager import ModelManager
-from app.rag.retriever import Retriever
-from app.rag.store import DocStore
-from app.services.agent_prompts import DEFAULT_AGENT, agents
+from app.knowledge.base import entries, knowledge_base_system
+from app.services.agent_prompts import DEFAULT_AGENT, agents, estimate_tokens
 from app.services.chat_service import ChatService, error_body
 from app.tools.registry import ToolRunner
 
@@ -38,18 +37,16 @@ async def lifespan(app: FastAPI):
         elif m.context_window < largest + m.max_tokens:
             logger.warning("model {} context_window={} is too small for the largest agent prompt (~{} tokens).",
                            m.id, m.context_window, largest)
-    retriever = await _start_retriever(agent_config)
+    logger.info("Knowledge base: {} entries (~{} tokens) from app/prompts/knowledge_base_system.md, sent to every agent",
+                len(entries()), estimate_tokens(knowledge_base_system()))
     customers = await _start_customers(agent_config)
-    tools = await _start_tools(agent_config, retriever)
-    app.state.chat_service = ChatService(manager, retriever, customers, tools)
-    app.state.doc_store = DocStore(retriever) if retriever else None
+    tools = await _start_tools(agent_config)
+    app.state.chat_service = ChatService(manager, customers, tools)
     app.state.cors_origins = agent_config.playground.cors_origins if agent_config.playground.enabled else []
 
     yield
 
     await manager.aclose()
-    if retriever:
-        await retriever.aclose()
     if customers:
         await customers.aclose()
     if tools:
@@ -62,20 +59,6 @@ def _pg_dsn() -> str:
     except Exception as exc:  # noqa: BLE001
         logger.error("Could not read the Postgres URL: {}", exc)
         return ""
-
-
-async def _start_retriever(agent_config) -> Retriever | None:
-    rag = agent_config.rag
-    if not rag or not rag.enabled:
-        logger.warning("rag is not configured — replies are not grounded in the docs knowledge base.")
-        return None
-    dsn = _pg_dsn()
-    if not dsn:
-        logger.error("rag is configured but PG_DB_URL is empty — replies are not grounded in the docs knowledge base.")
-        return None
-    retriever = Retriever(rag, dsn)
-    await retriever.start()
-    return retriever
 
 
 async def _start_customers(agent_config) -> CustomerStore | None:
@@ -92,13 +75,13 @@ async def _start_customers(agent_config) -> CustomerStore | None:
     return store
 
 
-async def _start_tools(agent_config, retriever) -> ToolRunner | None:
+async def _start_tools(agent_config) -> ToolRunner | None:
     """The agents' tools (app/tools). Without the database only Validate_Appointment can run."""
     settings = agent_config.tools
     if not settings.enabled:
         logger.warning("tools are disabled — agents answer from their prompts alone.")
         return None
-    runner = ToolRunner(settings, _pg_dsn(), retriever)
+    runner = ToolRunner(settings, _pg_dsn())
     await runner.start()
     if settings.write_mode == "dry_run":
         logger.warning("tools.write_mode=dry_run — tools that change data report what they would write and write nothing.")
@@ -166,11 +149,11 @@ async def unhandled_error_handler(_: Request, exc: Exception) -> JSONResponse:
 @app.get("/health", tags=["system"])
 async def health(request: Request) -> dict:
     service = request.app.state.chat_service
-    rag = "off" if service.retriever is None else ("ready" if service.retriever.ready else "unavailable")
     customers = "off" if service.customers is None else ("ready" if service.customers.ready else "unavailable")
     tools = "off" if service.tools is None else (service.tools.settings.write_mode if service.tools.ready else "no_database")
     return {
-        "status": "ok", "env": config.ENV.value, "models": [m.id for m in service.manager.models], "rag": rag,
+        "status": "ok", "env": config.ENV.value, "models": [m.id for m in service.manager.models],
+        "knowledge_base_entries": len(entries()),
         "customer_records": customers, "tools": tools,
     }
 

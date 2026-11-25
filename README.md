@@ -35,8 +35,6 @@ message naming the field. The full example is in
 | `service_api_key` | Callers send this as `Authorization: Bearer …` or `X-API-Key`. If it is empty, auth is off in dev, and in prod every request is refused. |
 | `models[]` | `id` (the name callers use), `type`, `provider`, `protocol`, `model` (the provider's own name), `base_url`, `api_key`, `headers`, plus per-model settings `max_tokens`, `temperature`, `timeout`, `max_retries`, `max_tokens_field`, `stream_usage`, and `fallbacks` (model ids tried in order). |
 
-| `rag` | Optional. Grounds every reply in the backend's `docs` table (see below). |
-
 No model, vendor, or URL is hardcoded; everything comes from the config.
 
 - `protocol` picks the wire format: `anthropic` (Anthropic Messages API) or `openai` (any OpenAI-compatible server: OpenAI, OpenRouter, Gemini, Groq, Ollama, vLLM, LM Studio, …).
@@ -46,34 +44,23 @@ No model, vendor, or URL is hardcoded; everything comes from the config.
 - `extra_body` sends extra request fields to the provider unchanged, e.g. `{"reasoning_effort": "none"}` to turn off a thinking model's hidden reasoning (much faster on Ollama).
 - Vendor quirks are per-model fields: set `"max_tokens_field": "max_completion_tokens"` for OpenAI's own API, and `"stream_usage": false` for servers that reject usage reporting while streaming (Gemini).
 
-## Knowledge base (RAG)
+## Knowledge base (`knowledge_base_system`)
 
-Dealership facts (FAQ, policies, offers, products, locations) are not in the system prompt. For every chat
-message the service searches the `docs` table owned by **ai-agent-management**, which stores each
-document's `content` and its pgvector `embedding`. Chat only reads that table; the `/v1/docs` endpoints below
-are the only code here that writes to it, and nothing runs migrations.
+Dealership facts are a static prompt: [app/prompts/knowledge_base_system.md](app/prompts/knowledge_base_system.md)
+holds the instructions and, inside `<knowledge>`, every entry (FAQs, policies and the outbound campaign's SMS
+compliance footers). There is no RAG, no embedding and no database read: the file is sent whole to every agent,
+for every request, with or without `tenant_id`.
 
-1. **Query.** The latest user message. A short follow-up (under 6 words) is joined to the previous user message.
-2. **Embed.** The query goes to `rag.embedding`, any OpenAI-compatible `/embeddings` endpoint. Use **the same model and dimensions that produced `docs.embedding`**. At startup the service reads the column's dimension and refuses to search on a mismatch.
-3. **Search.** Cosine distance (`<=>`) over the request's `tenant_id` only, optionally narrowed to `rag.kinds`. It fetches `top_k × 2` rows.
-4. **Select.** Drops matches below `min_similarity`, matches more than `max_similarity_gap` below the best one, and duplicate content. Keeps at most `top_k`.
-5. **Build the context.** Each doc is cut to `max_doc_tokens`, and all of them together fit in `max_context_tokens` (~4 chars/token). The result is added as the last system block, inside `<knowledge>`, with instructions to answer only from it.
+- **Placement.** Right after the agent prompt and its addendum, before the runtime block. It never changes, so it
+  is part of the cached prefix (Anthropic `cache_control`; OpenAI and Ollama reuse the prefix on their own).
+- **Format.** One entry per `[kind] tags: a, b | metadata: key: value, …` header line, followed by its text. The
+  entries were copied from the `docs` table with exact duplicates listed once (32 entries, ~3k tokens).
+- **Changing it.** Edit the file and restart the service. Startup logs the entry count;
+  `GET /health` reports `knowledge_base_entries`.
+- **Knowledge_Base_Search** parses the same entries from the file and searches them by keyword.
 
-When nothing matches, when the request has no `tenant_id`, or when retrieval fails or takes longer than
-`rag.timeout`, the reply still goes out. The model is then told it has no dealership facts and must say a team
-member will confirm rather than guess. Failures are logged; a DB that is down is retried at most every 30s.
-`GET /health` reports `rag: ready | unavailable | off`.
-
-| `rag` field | Default | Meaning |
-|-------------|---------|---------|
-| `enabled` | `true` | Turn retrieval off without deleting the section. |
-| `embedding` | required | `provider`, `model`, `base_url`, `api_key`, `headers`, `dimensions` (sent only if set), `timeout`, `max_retries`. |
-| `top_k` | `5` | Most docs per prompt. |
-| `min_similarity` | `0.3` | Cosine similarity floor. Tune it for your embedding model. |
-| `max_similarity_gap` | `0.15` | Keep only docs within this much of the best match. |
-| `max_context_tokens` / `max_doc_tokens` | `1500` / `600` | Token budgets for the whole block and for one doc. |
-| `kinds` | `null` | Limit to these `docs.kind` values. |
-| `timeout` | `5` | Seconds for embedding plus search. |
+The service does not use the `docs` table at all (no reads, no writes, no `/v1/docs` endpoints). A `rag` section left in `ai-agent-config` is
+ignored (with a startup warning).
 
 The database is the backend's Postgres: `PG_DB_URL` in dev (`dev.env`), and in prod the `pg-db-url` secret
 (override the name with `PG_DB_URL_NAME`). This is the Supavisor transaction pooler (:6543) that the backend's API
@@ -84,7 +71,7 @@ keeps it for LISTEN/NOTIFY.
 
 When a request carries `sms_thread_key` and/or `email_thread_key`, it must also carry `tenant_id` (otherwise `422`).
 The gateway then reads that customer's records from the same Postgres ([app/customer](app/customer)) and adds them to
-the system prompt, between your `system` messages and the retrieved knowledge. It only reads; nothing is written.
+the system prompt, after your `system` messages. It only reads; nothing is written.
 
 - **Who the customer is.** Every lead of the tenant whose `phone` / `thread_id` matches the SMS number (in any of
   the formats it is stored in: `+15551234567`, `15551234567`, `5551234567`) or whose `email` matches. One number
@@ -155,7 +142,7 @@ until the model answers (at most `tools.max_iterations` rounds, then it must ans
 
 | Tool | n8n node | What it does here |
 |------|----------|-------------------|
-| Knowledge_Base_Search | HTTP (query-kb webhook) | pgvector search of the tenant's `docs`, with the gateway's own retriever |
+| Knowledge_Base_Search | HTTP (query-kb webhook) | Keyword search (shared words, tags count double) over the static knowledge base entries the prompt already lists |
 | Get_SMS_conversation_log | Supabase | The thread's `sms_log` rows, oldest first |
 | Update_mileage | Supabase | `lead_vehicles.mileage`; only a figure the customer stated in their latest message |
 | Validate_Appointment | Code | Same parsing and guards as n8n, in the dealership's hours and time zone |
@@ -169,7 +156,7 @@ Book_Service_Appointment and Get_Service_Pricing are disabled in the workflow an
 not offered even though some prompts mention them.
 
 - **Only what the request can run is offered.** Tools that act on the customer need `tenant_id` plus a thread key
-  (to find the lead); Knowledge_Base_Search needs `rag`; Search_Inventory needs `tools.marketcheck_api_key`.
+  (to find the lead); Knowledge_Base_Search needs nothing; Search_Inventory needs `tools.marketcheck_api_key`.
   Validate_Appointment needs nothing (it falls back to the default opening hours). Skipped tools are logged.
 - **Failures never fail the reply.** A tool that errors, times out (`tools.timeout`) or refuses returns
   `{"ok": false, "error": …}` to the model, which answers accordingly.
@@ -220,7 +207,7 @@ When streaming, both are on the last chunk. `GET /v1/agents` lists each agent's 
 | `max_result_chars` | `8000` | A tool result is cut to this before the model sees it. |
 | `disabled` | `[]` | Tool names never offered. |
 | `marketcheck_api_key` | `""` | Search_Inventory is offered only when set. |
-| `knowledge_base_limit` | `3` | Docs Knowledge_Base_Search returns. |
+| `knowledge_base_limit` | `3` | Entries Knowledge_Base_Search returns. |
 
 ## API
 
@@ -239,14 +226,14 @@ When streaming, both are on the last chunk. `GET /v1/agents` lists each agent's 
 
 The only parameters are the LLM ones: `model`, `model_type`, `messages`,
 `temperature`, `top_p`, `reasoning_effort`, `max_tokens`, `stop`, `response_format`, and `stream`, plus `tenant_id`
-(the dealership whose `docs` ground the reply), `sms_thread_key` (the customer's SMS number, `sms_log.thread_key`)
+(the dealership: its records, the customer's lead and the tools are looked up with it), `sms_thread_key` (the customer's SMS number, `sms_log.thread_key`)
 and `email_thread_key` (the customer's email address). See [Customer records](#customer-records-and-history).
 
 `reasoning_effort` (`none` | `low` | `medium` | `high`) sets how much a thinking model reasons before answering, per request. It overrides any `reasoning_effort` in the model's `extra_body`; leave it unset to use the model's configured default. On OpenAI-protocol servers (Ollama, vLLM, OpenAI) it is sent as `reasoning_effort`. On Claude it becomes `output_config.effort`; Claude has no `none`, so `none` is sent as `low`. Claude models also reject `temperature` and `top_p`, so the gateway doesn't send those two to Claude.
 
 - `model` is required; there is no default model. If it is missing or unknown, you get a `400` that lists the configured model ids. If you also send `model_type`, it must match the model, and the list is narrowed to that type.
-- `agent` picks the system prompt: `app/prompts/agents/<agent>_system_instr.md` : `general` (default), `inventory`, `scheduling` (file `schedule_system_instr.md`), `value_data_collection`, `service_trade_reply` (see `GET /v1/agents`). Names are case-insensitive, spaces and hyphens count as `_`, and `schedule` is accepted for `scheduling`. Without it (or with `""`) the `general` agent answers; an unknown agent is a `400 unknown_agent` listing the choices. The files are only read. Their n8n `{{ … }}` expressions are replaced by the fallback each one names (e.g. `'the dealership'`), and the date/time ones point to a `RUNTIME CONTEXT` block with today's date and time (America/New_York). The system message is: agent prompt → runtime context → your own `system` messages → customer records → retrieved knowledge.
-- **Large prompts.** The agent prompts are 8k–14k tokens. The agent prompt always comes first and is byte-identical on every request, so providers cache it: Anthropic via `cache_control` (cached reads cost ~10% and are faster), OpenAI and Ollama by reusing a matching prefix on their own. Set `context_window` on each model: the prompt is then fitted inside it. The agent's instructions are never cut; the reply's `max_tokens` is reserved; then the latest message, recent turns (up to half of what is left), retrieved knowledge and customer history get shrunk budgets, and the oldest turns are dropped. If even the agent prompt doesn't fit you get `400 context_window_exceeded` instead of a silently truncated prompt. **Ollama:** its default context length is far smaller than these prompts and it silently drops the start of a longer prompt. Start it with e.g. `OLLAMA_CONTEXT_LENGTH=32768` and set the model's `context_window` to the same value. Small local models (1B–3B) follow 14k-token rulebooks poorly; prefer 8B+ for these agents.
+- `agent` picks the system prompt: `app/prompts/agents/<agent>_system_instr.md` : `general` (default), `inventory`, `scheduling` (file `schedule_system_instr.md`), `value_data_collection`, `service_trade_reply` (see `GET /v1/agents`). Names are case-insensitive, spaces and hyphens count as `_`, and `schedule` is accepted for `scheduling`. Without it (or with `""`) the `general` agent answers; an unknown agent is a `400 unknown_agent` listing the choices. The files are only read. Their n8n `{{ … }}` expressions are replaced by the fallback each one names (e.g. `'the dealership'`), and the date/time ones point to a `RUNTIME CONTEXT` block with today's date and time (America/New_York). The system message is: agent prompt → its addendum → knowledge base (`knowledge_base_system`) → runtime context → your own `system` messages → customer records.
+- **Large prompts.** The agent prompts are 8k–14k tokens. The agent prompt and the knowledge base always come first and are byte-identical on every request, so providers cache them: Anthropic via `cache_control` (cached reads cost ~10% and are faster), OpenAI and Ollama by reusing a matching prefix on their own. Set `context_window` on each model: the prompt is then fitted inside it. The agent's instructions are never cut; the reply's `max_tokens` is reserved; then the latest message, recent turns (up to half of what is left) and customer history get shrunk budgets, and the oldest turns are dropped. If even the agent prompt doesn't fit you get `400 context_window_exceeded` instead of a silently truncated prompt. **Ollama:** its default context length is far smaller than these prompts and it silently drops the start of a longer prompt. Start it with e.g. `OLLAMA_CONTEXT_LENGTH=32768` and set the model's `context_window` to the same value. Small local models (1B–3B) follow 14k-token rulebooks poorly; prefer 8B+ for these agents.
 - **Workflow node values.** The prompts' `{{ $('<node>')… }}` expressions and the tools read other n8n nodes.
   - *Database-backed nodes* (`Get tenant`, `Get tenant emails & phone`, `Lookup Lead`, `Lookup Lead Vehicle`,
     `Get Recent SMS History`, `Insert Log`, `Get Equity Context`, `Load Conversation State`) are read by the gateway
@@ -273,26 +260,6 @@ The response follows the OpenAI shape and adds `model_type`, `latency_ms`, `fall
 
 Errors always look like `{"error": {"message", "type", "code"}}`.
 
-### `POST /v1/docs`, `PUT /v1/docs/{id}`, `DELETE /v1/docs/{id}?tenant_id=`
-
-Manage knowledge-base docs and keep `docs.embedding` in step with the text. Each needs the same API key as chat and a
-configured `rag` section (otherwise `503 docs_unavailable`).
-
-```json
-POST /v1/docs
-{"tenant_id": "<uuid>", "kind": "faq", "content": "Appraisals take 15-20 minutes.",
- "tags": ["trade-in"], "metadata": {"source": "website"}}
-```
-
-- **Required:** `tenant_id`, `kind` and `content`. Everything else (`tags`, `metadata`, `image_path`, `cadence_id`) is optional; `null` or a blank `""` means "not set".
-- `kind` is one of `product`, `offer`, `compliance`, `persona`, `faq`, `policy` (the table's check constraint).
-- **What is embedded:** `kind`, `tags`, `content` and every text, number and bool value in `metadata` (as `key: value`, nested keys dotted). **Datetimes and GUIDs are left out**: `id`, `tenant_id`, `cadence_id`, `updated_at`, and any tag or metadata value that is a GUID or an ISO date/datetime. `image_path` is left out too (a storage path). Dates written inside `content` are kept. The vector is stored in `docs.embedding`; the raw values (including the dates and GUIDs in `metadata`) are stored as sent.
-- **Same model as search:** it uses `rag.embedding`, so stored vectors and query vectors are comparable. A dimension mismatch with `docs.embedding` is a `500 embedding_mismatch`.
-- **Embed first, then write.** If the embedding model fails or times out (`502`/`504`), nothing is saved. A doc is never stored without an embedding or with a stale one.
-- **`PUT`** changes only the fields sent (`null` clears `tags`, `metadata`, `image_path`, `cadence_id`; `kind` and `content` cannot be null). It re-embeds, using the stored values for the fields you did not send, only when `kind`, `tags`, `content` or `metadata` change. If the row changes while it is being re-embedded you get `409 doc_conflict`; retry.
-- **Tenant-scoped.** `PUT` and `DELETE` need the doc's `tenant_id`; a doc of another tenant is a `404`. An unknown `tenant_id` or `cadence_id` is a `400 invalid_reference`.
-- The response is the stored doc (without the vector) plus `embedded: {model, dimensions, chars, truncated}`. Text over ~24,000 characters is embedded up to that point (`truncated: true`): the rest is stored but not searchable. Split a long document into several docs.
-
 ### `GET /v1/models`
 
 Lists the configured models (`id`, `type`, `provider`, `model`). API keys are never returned.
@@ -317,12 +284,9 @@ Returns the service status and the configured model ids.
 | `app/llm/model_manager.py` | **ModelManager**: resolves a model, applies its per-model settings, calls it, falls back |
 | `app/llm/anthropic_provider.py`, `app/llm/openai_compatible.py` | The two protocol adapters |
 | `app/services/agent_prompts.py` | Loads and renders the agent prompts in `app/prompts/agents/` |
-| `app/rag/retriever.py` | Read-only pgvector search over `docs` and selection of the relevant matches |
-| `app/rag/embedding_text.py` | Builds the text that is embedded for a doc (no datetimes or GUIDs) |
-| `app/rag/store.py` | Creates, updates and deletes `docs` rows with their embedding |
-| `app/api/v1/endpoints/docs.py` | The `/v1/docs` routes |
-| `app/rag/context.py` | Builds the token-budgeted `<knowledge>` block, or the "nothing found" notice |
-| `app/services/chat_service.py` | Builds the request (system prompt + retrieved context), runs the tool loop, shapes JSON and SSE output |
+| `app/prompts/knowledge_base_system.md` | The static knowledge base every agent gets: instructions and all entries |
+| `app/knowledge/base.py` | Reads that file, parses its entries, and the keyword search behind Knowledge_Base_Search |
+| `app/services/chat_service.py` | Builds the request (system prompt + knowledge base), runs the tool loop, shapes JSON and SSE output |
 | `app/tools/registry.py` | Which tools each agent has; runs a tool call safely |
 | `app/tools/*.py` | The tools, ported from the n8n SMS handler |
 | `app/core/config.py` | Dev/prod loading of `ai-agent-config` and `PG_DB_URL` |

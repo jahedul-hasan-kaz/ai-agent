@@ -1,8 +1,8 @@
 """
 Tools over the customer's records and the dealership's knowledge base.
 
-* Knowledge_Base_Search (n8n HTTP tool -> the query-kb webhook): a pgvector search of the tenant's `docs`, run
-  here with the gateway's own retriever (same embedding model and similarity rules as the automatic RAG context).
+* Knowledge_Base_Search (n8n HTTP tool -> the query-kb webhook): a keyword search of the static knowledge base
+  entries every agent already gets in its knowledge_base_system block (see app/knowledge). No database.
 * Get_SMS_conversation_log (n8n Supabase tool): the thread's sms_log rows.
 * Update_mileage (n8n Supabase tool): writes lead_vehicles.mileage. As in n8n, the figure must be one the customer
   stated in their latest message: the model's own number is never written.
@@ -12,7 +12,8 @@ from typing import Any, Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from app.tools.base import NEEDS_CUSTOMER, NEEDS_DB, NEEDS_RETRIEVER, NEEDS_SMS, NEEDS_TENANT, Tool, ToolContext, schema
+from app.knowledge.base import entries, search
+from app.tools.base import NEEDS_CUSTOMER, NEEDS_DB, NEEDS_SMS, Tool, ToolContext, schema
 
 # ---------------------------------------------------------------------------------------------------------------
 # Knowledge_Base_Search
@@ -23,20 +24,15 @@ async def knowledge_base_search(ctx: ToolContext, args: dict[str, Any]) -> dict[
     question = str(args.get("question") or "").strip()
     if not question:
         return {"ok": False, "error": "question is required"}
-    retrieval = await ctx.retriever.retrieve([{"role": "user", "content": question}], ctx.tenant_id)
-    if retrieval.status == "error":
-        return {"ok": False, "error": f"knowledge base unavailable ({retrieval.reason})", "results": []}
-    docs = retrieval.docs[: ctx.settings.knowledge_base_limit]
-    if not docs:
+    found = search(entries(), question, ctx.settings.knowledge_base_limit)
+    if not found:
         return {
             "ok": True, "results": [],
             "message": "Nothing in the knowledge base answers this. Do not guess; say a team member will confirm.",
         }
     return {
         "ok": True,
-        "results": [
-            {"kind": d.kind, "tags": d.tags, "content": d.content, "similarity": round(d.similarity, 3)} for d in docs
-        ],
+        "results": [{"kind": d.kind, "tags": d.tags, "content": d.content, "score": score} for d, score in found],
     }
 
 
@@ -51,7 +47,6 @@ KNOWLEDGE_BASE_SEARCH = Tool(
         ["question"],
     ),
     run=knowledge_base_search,
-    needs=(NEEDS_TENANT, NEEDS_RETRIEVER),
 )
 
 # ---------------------------------------------------------------------------------------------------------------

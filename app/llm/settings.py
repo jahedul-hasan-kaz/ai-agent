@@ -51,7 +51,7 @@ class ModelConfig(BaseModel):
         None,
         ge=1024,
         description="Tokens the model accepts (prompt + reply). When set, every prompt is fitted inside it: the "
-        "agent's instructions are always sent whole, and history and retrieved context are trimmed to fit. "
+        "agent's instructions are always sent whole, and history and the knowledge base are trimmed to fit. "
         "For Ollama this must match the server's context length (OLLAMA_CONTEXT_LENGTH or the model's num_ctx), "
         "which defaults far below the agent prompts' size and otherwise silently cuts the prompt's start.",
     )
@@ -85,46 +85,6 @@ class ModelConfig(BaseModel):
         if not self.base_url.startswith(("http://", "https://")):
             raise ValueError(f"model '{self.id}': base_url must start with http:// or https://")
         return self
-
-
-class EmbeddingConfig(BaseModel):
-    """OpenAI-compatible /embeddings endpoint. Must be the same model (and dimensions) that wrote `docs.embedding`."""
-
-    provider: str = Field(..., min_length=1, description="Free-text vendor label for logs, e.g. 'openai'.")
-    model: str = Field(..., min_length=1, description="Embedding model name, e.g. text-embedding-3-small.")
-    base_url: str = Field(..., description="e.g. https://api.openai.com/v1")
-    api_key: str = ""
-    headers: dict[str, str] = Field(default_factory=dict)
-    dimensions: Optional[int] = Field(
-        None, ge=1, description="Sent to the API only when set (text-embedding-3 can shorten vectors)."
-    )
-    timeout: float = Field(10, gt=0)
-    max_retries: int = Field(1, ge=0, le=5)
-
-    @model_validator(mode="after")
-    def _check_connection(self) -> "EmbeddingConfig":
-        self.base_url = self.base_url.strip().rstrip("/")
-        if not self.base_url.startswith(("http://", "https://")):
-            raise ValueError("rag.embedding: base_url must start with http:// or https://")
-        return self
-
-
-class RagConfig(BaseModel):
-    """Retrieval over the backend's `docs` table (pgvector, cosine). Retrieval only: nothing is written."""
-
-    enabled: bool = True
-    embedding: EmbeddingConfig
-    top_k: int = Field(5, ge=1, le=20, description="Most docs put into one prompt.")
-    min_similarity: float = Field(
-        0.3, ge=-1, le=1, description="Cosine similarity floor; weaker matches are dropped. Tune per embedding model."
-    )
-    max_similarity_gap: float = Field(
-        0.15, ge=0, le=2, description="Drop docs scoring this far below the best match (keeps only the relevant cluster)."
-    )
-    max_context_tokens: int = Field(1500, ge=100, le=20_000, description="Budget for all retrieved text (~4 chars/token).")
-    max_doc_tokens: int = Field(600, ge=50, le=20_000, description="One doc is cut to this before it enters the budget.")
-    kinds: Optional[list[str]] = Field(None, description="Only these docs.kind values; null = every kind.")
-    timeout: float = Field(5, gt=0, description="Seconds for embed + search; slower answers go out without context.")
 
 
 class CustomerConfig(BaseModel):
@@ -164,7 +124,7 @@ class ToolsConfig(BaseModel):
     disabled: list[str] = Field(default_factory=list, description="Tool names never offered, e.g. [\"Search_Inventory\"].")
     marketcheck_api_key: str = Field("", description="Search_Inventory's MarketCheck key. Empty: Search_Inventory is not offered.")
     marketcheck_base_url: str = "https://api.marketcheck.com"
-    knowledge_base_limit: int = Field(3, ge=1, le=10, description="Docs Knowledge_Base_Search returns (n8n: 3).")
+    knowledge_base_limit: int = Field(3, ge=1, le=10, description="Knowledge base entries Knowledge_Base_Search returns (n8n: 3).")
 
 
 class PlaygroundConfig(BaseModel):
@@ -177,7 +137,6 @@ class PlaygroundConfig(BaseModel):
 class AgentConfig(BaseModel):
     service_api_key: str = ""
     models: list[ModelConfig] = Field(..., min_length=1)
-    rag: Optional[RagConfig] = None
     customer: CustomerConfig = Field(default_factory=CustomerConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     playground: PlaygroundConfig = Field(default_factory=PlaygroundConfig)

@@ -22,13 +22,11 @@ from loguru import logger
 
 from app.llm.base import ToolCall, ToolSpec
 from app.llm.settings import ToolsConfig
-from app.rag.retriever import Retriever
 from app.tools.appointments import CANCEL_APPOINTMENT, SAVE_APPOINTMENT_NOTES, VALIDATE_APPOINTMENT
 from app.tools.base import (
     NEEDS_CUSTOMER,
     NEEDS_DB,
     NEEDS_MARKETCHECK,
-    NEEDS_RETRIEVER,
     NEEDS_SMS,
     NEEDS_TENANT,
     Tool,
@@ -119,9 +117,8 @@ def spec(tool: Tool) -> ToolSpec:
 
 
 class ToolRunner:
-    def __init__(self, settings: ToolsConfig, dsn: str = "", retriever: Optional[Retriever] = None) -> None:
+    def __init__(self, settings: ToolsConfig, dsn: str = "") -> None:
         self.settings = settings
-        self.retriever = retriever
         self._dsn = dsn
         self._pool: Optional[asyncpg.Pool] = None
         self._last_attempt = 0.0
@@ -167,7 +164,7 @@ class ToolRunner:
         await self._reconnect()
         return ToolContext(
             settings=self.settings, tenant_id=tenant_id, sms_thread_key=sms_thread_key, email_thread_key=email_thread_key,
-            turns=turns, pool=self._pool, http=self.http, retriever=self.retriever, node_data=node_data or {},
+            turns=turns, pool=self._pool, http=self.http, node_data=node_data or {},
         )
 
     def offered(self, agent_id: str, ctx: ToolContext) -> tuple[list[Tool], dict[str, str]]:
@@ -191,8 +188,6 @@ class ToolRunner:
                 return "no tenant_id with sms_thread_key"
             if need == NEEDS_DB and ctx.pool is None:
                 return "the backend's database is not reachable"
-            if need == NEEDS_RETRIEVER and ctx.retriever is None:
-                return "rag (the docs knowledge base) is not configured"
             if need == NEEDS_MARKETCHECK and not self.settings.marketcheck_api_key:
                 return "tools.marketcheck_api_key is not set"
         return None

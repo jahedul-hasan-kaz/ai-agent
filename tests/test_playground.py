@@ -21,7 +21,6 @@ def _client(monkeypatch, playground):
 
     monkeypatch.setattr(config, "load_agent_config", lambda: AgentConfig.model_validate({**CONFIG, "playground": playground}))
     monkeypatch.setattr(main, "ModelManager", lambda cfg: ModelManager(cfg, FakeProvider))
-    monkeypatch.setattr(main, "_start_retriever", none)
     monkeypatch.setattr(main, "_start_customers", none)
     return TestClient(main.app)
 

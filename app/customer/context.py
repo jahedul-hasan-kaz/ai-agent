@@ -14,6 +14,21 @@ _RECENT_SHARE = 0.6
 _ALWAYS_RECENT = 3
 _DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+# Short follow-ups ("what about Saturday?") borrow the customer's previous message.
+_SHORT_QUERY_WORDS = 6
+_MAX_QUERY_CHARS = 2000
+
+
+def build_query(messages: list[dict]) -> str:
+    """The text older history is matched against: the latest customer message, plus the one before it when the
+    latest is a short follow-up."""
+    user_turns = [m["content"].strip() for m in messages if m["role"] == "user" and m["content"].strip()]
+    if not user_turns:
+        return ""
+    query = user_turns[-1]
+    if len(user_turns) > 1 and len(query.split()) < _SHORT_QUERY_WORDS:
+        query = f"{user_turns[-2]}\n{query}"
+    return query[-_MAX_QUERY_CHARS:]
 
 _PROFILE = (
     "Customer records: the dealership's CRM entries for the customer you are talking to. Use them for the "

@@ -156,7 +156,6 @@ def customer_client(monkeypatch):
                                       recent=[_msg(1, "outbound", "Want a quick trade-in value?")])))
     monkeypatch.setattr(config, "load_agent_config", lambda: AgentConfig.model_validate(CONFIG))
     monkeypatch.setattr(main, "ModelManager", lambda cfg: ModelManager(cfg, factory))
-    monkeypatch.setattr(main, "_start_retriever", none)
     monkeypatch.setattr(main, "_start_customers", none)
     with TestClient(main.app) as c:
         main.app.state.chat_service.customers = store
