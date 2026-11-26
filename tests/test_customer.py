@@ -138,7 +138,7 @@ class FakeStore:
         if self.store_error:
             raise self.store_error
         self.stored.append(args)
-        return Stored("sms" if args[1] else "email", "101", "102")
+        return Stored("sms" if args[1] else "email", "101", "102" if args[4] else None)
 
 
 @pytest.fixture
@@ -238,3 +238,15 @@ def test_streaming_stores_the_full_reply(customer_client):
     final = json.loads(lines[-2][6:])
     assert final["stored"]["outbound_id"] == "102"
     assert store.stored[0][4] == "Reply from llama" and store.stored[0][5] == "u1"
+
+
+
+def test_a_noop_reply_logs_only_the_customer_message(customer_client):
+    # n8n never sends <NOOP>: the customer's message is logged, no outbound row.
+    client, store, providers = customer_client
+    providers["claude"].reply = "<NOOP>"
+    body = _store_body(reroute_noop=False)
+    res = client.post("/v1/chat/completions", json=body)
+    assert res.json()["choices"][0]["message"]["content"] == "<NOOP>"
+    assert res.json()["stored"] == {"channel": "sms", "inbound_id": "101", "outbound_id": None, "error": None}
+    assert store.stored[-1][3:5] == ("Yes, 37000 miles", "")

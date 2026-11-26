@@ -249,6 +249,8 @@ class ChatService:
         customer_text = next(m.content for m in reversed(req.messages) if m.role == "user")
         if not reply.strip():
             return StoredMessages(error="empty reply, nothing stored")
+        if noop_router.is_noop(reply):
+            reply = ""  # nothing is sent to the customer, so no outbound row: only their message is logged (as n8n)
         if self.customers is None:
             return StoredMessages(error="customer records are not configured")
         try:

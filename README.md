@@ -104,6 +104,8 @@ transaction ([app/customer/writer.py](app/customer/writer.py)):
 
 - the latest `user` message: `inbound`, status `received`;
 - the reply: `outbound`, status `delivered`, `sent_by` from the request (default `agent`), and `delivered_at` set.
+  A `<NOOP>` reply is not sent to the customer, so it gets no outbound row (`outbound_id` is null); only the
+  customer's message is logged, as in n8n.
   For email, `sent_at` is set as well.
 
 Both rows get `created_at` / `updated_at` set to the time of the insert, and SMS rows also get `received_at`.

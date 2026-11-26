@@ -195,6 +195,7 @@ def test_the_value_agent_gets_its_gateway_addendum(client, providers):  # noqa: 
     assert value.index("value-data-collection-notes-v1") < value.index("=== RUNTIME CONTEXT ===")
     assert "value-data-collection-notes-v1" not in scheduling
     assert "escalation-tone-v1" in value and "escalation-tone-v1" in scheduling
+    assert "closing-wording-v1" in value and "closing-wording-v1" in scheduling
 
 
 def test_lane_agents_get_their_boundary_addenda(client, providers):  # noqa: F811

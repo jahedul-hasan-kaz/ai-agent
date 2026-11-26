@@ -76,7 +76,7 @@ class StoreError(Exception):
 class Stored:
     channel: str
     inbound_id: str
-    outbound_id: str
+    outbound_id: Optional[str]  # None when there was no reply to log (<NOOP>)
 
 
 async def store_exchange(
@@ -121,7 +121,7 @@ async def _store_sms(conn, tenant_id, key, customer_text, reply_text, sent_by, c
     )
     outbound = await conn.fetchval(
         sql, tenant_id, thread_key, "outbound", dealer, customer, reply_text, "delivered", sent_by, True, *keep.values()
-    )
+    ) if reply_text else None  # no reply (<NOOP>): only the customer's message is logged
     return Stored("sms", inbound, outbound)
 
 
@@ -155,5 +155,5 @@ async def _store_email(conn, tenant_id, key, customer_text, reply_text, sent_by,
     outbound = await conn.fetchval(
         sql, tenant_id, "outbound", dealer, customer, subject or None, reply_text, reply_to, "delivered", sent_by, True,
         *keep.values(),
-    )
+    ) if reply_text else None  # no reply (<NOOP>): only the customer's message is logged
     return Stored("email", inbound, outbound)
