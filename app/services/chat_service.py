@@ -157,7 +157,7 @@ class ChatService:
         turns = fit.turns
 
         if wants_customer:
-            system.append(await self._customer_context(req, turns, fit.history_tokens))
+            system.append(await self._customer_context(req, turns, fit.history_tokens, agent.id))
         messages = [{"role": "system", "content": "\n\n".join(system)}] + turns
         prompt_tokens = sum(estimate_tokens(m["content"]) + _TOKENS_PER_MESSAGE for m in messages)
         logger.info(
@@ -232,13 +232,21 @@ class ChatService:
         to_builder = lambda tokens: max(int(tokens * CHARS_PER_TOKEN / 4), 0)  # noqa: E731
         return _Fit(turns[start:], to_builder(history), window, reserve)
 
-    async def _customer_context(self, req: ChatCompletionRequest, turns: list[dict], history_tokens: int) -> str:
+    # Only this agent may quote a vehicle's value (it applies the mileage-freshness and high-mileage rules first);
+    # the others get records without values, so they cannot quote one.
+    _VALUE_AGENTS = frozenset({"value_data_collection"})
+
+    async def _customer_context(
+        self, req: ChatCompletionRequest, turns: list[dict], history_tokens: int, agent_id: str = "value_data_collection"
+    ) -> str:
         if self.customers is None:
             records = CustomerRecords("error", "customer records are not configured")
         else:
             records = await self.customers.load(req.tenant_id, req.sms_thread_key, req.email_thread_key, build_query(turns))
         s = self.customers.settings if self.customers else CustomerConfig()
-        context = build_customer_context(records, history_tokens, s.max_message_chars, turns)
+        context = build_customer_context(
+            records, history_tokens, s.max_message_chars, turns, show_values=agent_id in self._VALUE_AGENTS,
+        )
         logger.info("Customer context status={} injected_chars={} (~{} tokens)", records.status, len(context), len(context) // 4)
         return context
 

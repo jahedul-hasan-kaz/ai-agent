@@ -173,7 +173,23 @@ def test_thread_keys_load_the_customer_into_the_prompt(customer_client):
     system = providers["claude"].requests[0].messages[0]["content"]
     runtime = system.index("RUNTIME CONTEXT")
     assert runtime < system.index("<customer>", runtime) < system.index("<history>", runtime)
-    assert "$38,050" in system and "Want a quick trade-in value?" in system
+    assert "2022 Kia Telluride" in system and "Want a quick trade-in value?" in system
+    # The default (general) agent must not quote a value, so none is listed for it.
+    assert "$38,050" not in system and "estimated market value" not in system
+
+
+@pytest.mark.parametrize("agent,shows", [("value_data_collection", True), ("general", False), ("inventory", False),
+                                         ("scheduling", False), ("service_trade_reply", False)])
+def test_only_the_value_agent_sees_vehicle_values(customer_client, agent, shows):
+    client, _, providers = customer_client
+    client.post("/v1/chat/completions", json={
+        "model": "claude", "agent": agent, "use_tools": False, "tenant_id": TENANT, "sms_thread_key": "+15551234567",
+        "messages": [{"role": "user", "content": "What would you give me for my car?"}],
+    })
+    system = providers["claude"].requests[-1].messages[0]["content"]
+    assert ("estimated market value $38,050" in system) is shows
+    assert "2022 Kia Telluride EX: 37,000 mi" in system  # vehicle and mileage stay visible to every agent
+    assert ("never state or estimate what a vehicle is worth" in system) is not shows
 
 
 def test_without_thread_keys_nothing_is_loaded(customer_client):
