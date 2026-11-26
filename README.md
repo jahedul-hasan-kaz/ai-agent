@@ -184,11 +184,25 @@ not offered even though some prompts mention them.
     `Escalate_To_Human` call returning `ok: true` this turn is asked once more, with the reason added to the
     system prompt. If the claim comes back, its sentences are removed; if nothing is left, the reply becomes
     "Thanks for letting me know." plus the dealership's main number when known.
-- **Repeat decline safety net.** When General answers a repeat decline ("I already told you I'm not interested", or
-  the classifier's `repeat_decline`) without calling Suppress_Lead, the gateway calls it (`repeat_decline`, usual
-  checks and `write_mode`) and uses the prompt's wording: "Understood — I'll make sure you don't get further messages
-  from us…" on success, "…Reply STOP…" on failure. Skipped after a successful escalation or the agent's own
-  Suppress_Lead call, and for complaints (classifier).
+- **SMS opt-out** (`app/services/opt_out.py`, a port of n8n's Opt-out Detector; on by default, `"opt_out_gate":
+  false` turns it off). Before any agent runs on an SMS thread with a known lead:
+  - an opt-out message (STOP and its typos, unsubscribe, "stop texting me", "leave me alone", "take me off your
+    list", "wrong number", "not interested", 🛑 …, with n8n's guards: "stop by", "I don't want to opt out", our own
+    "Reply STOP to opt out" footer quoted in a reaction) is recorded with `public.process_opt_out(tenant, lead,
+    phone, 'SMS opt-out')` (dnc row, cadences stopped, lead `opted_out`; nothing in `dry_run`) and answered with the
+    fixed confirmation "You've been unsubscribed and won't receive further messages." (a wrong-number variant). No
+    model is called. If recording fails, the request fails with `opt_out_failed` instead of confirming;
+  - a customer who already opted out (lead status or lifecycle `opted_out`, `dnc`, `blocked`, or a `dnc` row) gets
+    `<NOOP>`: no agent runs. Opt-in (START) is not handled yet: it also gets `<NOOP>`.
+
+  `routing.outcome` is `opted_out` or `silent_opted_out`; the `Opt_Out` entry in `tool_calls` reports the write.
+- **Repeat decline / stop-contact safety net.** When any agent answers a repeat decline ("I already told you
+  I'm not interested", or the classifier's `repeat_decline`) or a request to stop contacting the customer ("stop
+  texting me", "leave me alone", "take me off your list", "don't text me") without calling Suppress_Lead, the
+  gateway calls it as General's tool (`repeat_decline`: cadence halt + send hold, never a DNC; usual checks and
+  `write_mode`) and uses General's wording: "Understood — I'll make sure you don't get further messages from us…" on
+  success, "…Reply STOP…" on failure. Skipped for `<NOOP>`, complaints (classifier), "stop calling me", and after
+  the agent's own Suppress_Lead call or a successful escalation.
 - **`<NOOP>` replies** (`app/services/noop_router.py`, a port of n8n's Empty Reply Detector and NOOP Pivot
   Re-Router; on by default, `"reroute_noop": false` turns it off). Spellings like `noop` or `<<NOOP>>` become
   `<NOOP>`. Then:

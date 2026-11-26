@@ -1,5 +1,6 @@
 """Turns an API request into a ModelManager call and shapes the answer (JSON or SSE)."""
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field, replace
@@ -23,7 +24,7 @@ from app.models.chat import (
     Usage,
 )
 from app.knowledge.base import knowledge_base_system
-from app.services import noop_router
+from app.services import noop_router, opt_out
 from app.services.agent_prompts import (
     AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, normalize, runtime_context,
 )
@@ -383,6 +384,80 @@ class ChatService:
 
     # ---- <NOOP> handling (app/services/noop_router.py) -------------------------------------------------------
 
+    # ---- opt-out (app/services/opt_out.py: the n8n Opt-out Detector) -------------------------------------------
+
+    _LEAD_OPT_SQL = "SELECT status, lifecycle_stage, dnc, blocked FROM public.leads WHERE id = $1"
+    _DNC_ROW_SQL = "SELECT 1 FROM public.dnc WHERE tenant_id = $1 AND phone = $2 LIMIT 1"
+    _PROCESS_OPT_OUT_SQL = (
+        "SELECT public.process_opt_out(p_tenant_id => $1, p_lead_id => $2, p_phone => $3, p_reason => $4)"
+    )
+
+    async def _opt_out_gate(self, req: ChatCompletionRequest, ctx: Optional[ToolContext] = None) -> Optional[_Answer]:
+        """What n8n does before any agent runs on an SMS: an opt-out message is recorded (public.process_opt_out:
+        dnc row, cadences stopped, lead status opted_out) and answered with the fixed confirmation; a customer who
+        already opted out gets no reply. None: no opt-out concern, the agents answer as usual. Needs the customer's
+        lead (tenant + SMS thread) and the database; without them nothing is checked."""
+        if not req.opt_out_gate or not req.sms_thread_key or req.tenant_id is None:
+            return None
+        ctx = ctx or await self._context(req)
+        if ctx is None or ctx.pool is None:
+            return None
+        try:
+            lead = await ctx.lead()
+        except Exception:  # noqa: BLE001 - no lead: n8n's opt-out path needs one too
+            return None
+        status_row, dnc_row = None, None
+        try:
+            status_row = await ctx.pool.fetchrow(self._LEAD_OPT_SQL, lead["id"])
+            if lead.get("phone"):
+                dnc_row = await ctx.pool.fetchval(self._DNC_ROW_SQL, lead["tenant_id"], lead["phone"])
+        except Exception as exc:  # noqa: BLE001 - the detector still runs; only the "already opted out" check is lost
+            logger.warning("opt-out: lead status not loaded ({})", f"{type(exc).__name__}: {exc}"[:200])
+        opted_out_status = bool(status_row) and "opted_out" in (status_row["status"], status_row["lifecycle_stage"])
+        already = opted_out_status or bool(status_row and (status_row["dnc"] or status_row["blocked"])) or bool(dnc_row)
+        message = ctx.inbound_text
+        verdict = opt_out.detect(message, opted_out_status)
+        origin = normalize(req.agent)
+        if verdict.is_opt_out:
+            run = await self._persist_opt_out(ctx, lead)
+            if not run.ok:
+                # n8n stops the turn (Fail Opt-Out Persistence) rather than confirm an opt-out it did not record.
+                raise LLMError(f"The opt-out could not be recorded ({run.error}). Nothing was sent.", 503,
+                               retryable=False, code="opt_out_failed")
+            logger.warning("opt-out: lead {} opted out{}", lead["id"], " (dry run)" if run.dry_run else "")
+            return self._fixed_answer(req, opt_out.confirmation_text(message), noop_router.Routing("opted_out", origin),
+                                      [run], ctx)
+        if already:
+            if verdict.is_opt_in:
+                logger.warning("opt-out: lead {} sent an opt-in; resubscribing is not handled here, no reply", lead["id"])
+            logger.info("opt-out: lead {} already opted out, no reply", lead["id"])
+            return self._fixed_answer(req, noop_router.NOOP, noop_router.Routing("silent_opted_out", origin), [], ctx)
+        return None
+
+    async def _persist_opt_out(self, ctx: ToolContext, lead: dict) -> ToolRun:
+        """n8n "Opt-Out Persist (RPC)": public.process_opt_out(tenant, lead, phone, 'SMS opt-out'). dry_run: nothing."""
+        started, args = time.perf_counter(), {"reason": "SMS opt-out"}
+        if not ctx.live:
+            return ToolRun("call_opt_out", "Opt_Out", "db", args, True, 0, None, True)
+        error = None
+        try:
+            raw = await ctx.pool.fetchval(self._PROCESS_OPT_OUT_SQL, lead["tenant_id"], lead["id"], lead.get("phone"),
+                                          "SMS opt-out")
+            result = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            if result.get("success") is not True:
+                error = f"process_opt_out: {result}"[:300]
+        except Exception as exc:  # noqa: BLE001
+            error = f"{type(exc).__name__}: {exc}"[:300]
+        return ToolRun("call_opt_out", "Opt_Out", "db", args, error is None, int((time.perf_counter() - started) * 1000),
+                       error, False)
+
+    def _fixed_answer(self, req: ChatCompletionRequest, text: str, routing: noop_router.Routing, runs: list[ToolRun],
+                      ctx: Optional[ToolContext]) -> _Answer:
+        """A reply the gateway decided without asking a model."""
+        model = self.manager.resolve(req.model, req.model_type)
+        return _Answer(model=model, result=LLMResult(text, "stop", 0, 0), fallback_used=False, runs=runs, ctx=ctx,
+                       routing=routing)
+
     async def _routed_answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
         answer = await self._route_noop(req, await self._answer(req, tooling))
         return await self._ensure_repeat_decline_suppressed(req, answer)
@@ -391,20 +466,24 @@ class ChatService:
     _SUPPRESS_FAILED_REPLY = "Sorry for the bother. Reply STOP and you won't receive further messages."
 
     async def _ensure_repeat_decline_suppressed(self, req: ChatCompletionRequest, answer: _Answer) -> _Answer:
-        """Safety net for the General agent's Repeat decline rule: a customer who says they already declined
-        ("I already told you I'm not interested") must be suppressed (cadence halt + send hold), not just thanked.
-        When the agent answered without calling Suppress_Lead, the gateway calls it (usual checks and write_mode) and
-        uses the prompt's own wording for the result. Only when General answered with text, tools are available,
-        and no Suppress_Lead or successful escalation already happened this turn."""
-        agent = answer.routing.to_agent if answer.routing and answer.routing.outcome == "rerouted" else normalize(req.agent)
-        if (agent != noop_router.GENERAL or noop_router.is_noop(answer.result.content) or self.tools is None
+        """Safety net for the Repeat decline rule: a customer who says they already declined ("I already told you I'm
+        not interested") or asks us to stop contacting them ("stop texting me", "leave me alone") must be suppressed
+        (cadence halt + send hold; never a DNC, which needs a STOP keyword), not just answered. When the reply - from
+        any agent - came without Suppress_Lead, the gateway calls it as General's tool (usual checks and write_mode)
+        and uses General's prompt wording for the result. Skipped for <NOOP>, a complaint (classifier), when tools
+        are off, and when Suppress_Lead or a successful escalation already happened this turn."""
+        if (noop_router.is_noop(answer.result.content) or self.tools is None
                 or not self.tools.settings.enabled or not req.use_tools
                 or _ran(answer.runs, "Suppress_Lead") or _ran(answer.runs, "Escalate_To_Human", ok=True)):
             return answer
         message, _ = await self._turn_text(req, answer.ctx)
         classifier = ((req.node_data or {}).get("Intent Classifier"))
-        repeat = (protected_close_category(classifier, message) == "repeat_decline" if isinstance(classifier, dict)
-                  else is_repeat_decline(message))
+        if isinstance(classifier, dict):
+            if classifier.get("complaint_signals") is True or classifier.get("intent") in _COMPLAINT_INTENTS:
+                return answer  # complaint work, not a close
+            repeat = protected_close_category(classifier, message) == "repeat_decline" or _asks_to_stop_contact(message)
+        else:
+            repeat = is_repeat_decline(message) or _asks_to_stop_contact(message)
         if not repeat:
             return answer
         ctx = answer.ctx or await self._context(req)
@@ -522,7 +601,7 @@ class ChatService:
 
     async def complete(self, req: ChatCompletionRequest) -> ChatCompletionResponse:
         started = time.perf_counter()
-        answer = await self._routed_answer(req)
+        answer = await self._opt_out_gate(req) or await self._routed_answer(req)
         latency_ms = _elapsed_ms(started)
         usage = Usage.of(answer.prompt_tokens, answer.completion_tokens)
         reply = answer.result.content.strip()
@@ -585,8 +664,9 @@ class ChatService:
 
         try:
             tooling = await self._tooling(req, await self._context(req))
-            if tooling[1]:
-                answer = await self._routed_answer(req, tooling)
+            gated = await self._opt_out_gate(req, tooling[0])
+            if gated or tooling[1]:
+                answer = gated or await self._routed_answer(req, tooling)
                 reply = answer.result.content.strip()
                 yield _event(chunk(answer.model, {"role": "assistant", "content": ""}))
                 yield _event(chunk(answer.model, {"content": reply}))
@@ -642,6 +722,22 @@ class ChatService:
         except LLMError as exc:
             yield _event(error_body(exc))
         yield "data: [DONE]\n\n"
+
+
+_COMPLAINT_INTENTS = frozenset({"complaint", "service_complaint", "legal_threat"})
+# The customer asks us to stop contacting them. Calling is left out on purpose: "stop calling me, text instead" is
+# not an opt-out of texts.
+_STOP_CONTACT = re.compile(
+    r"\b(?:stop|quit|cease|no more)\s+(?:texting|messaging|contacting|sending|bothering|spamming)\b"
+    r"|\bstop\s+(?:sending\s+)?(?:me\s+)?(?:texts|messages)\b"
+    r"|\bleave me alone\b|\b(?:take|remove|delete)\s+me\s+(?:off|from)\b|\bunsubscribe me\b"
+    r"|\bdo(?:n'?t| not)\s+(?:text|message|contact)\s+me\b",
+    re.I,
+)
+
+
+def _asks_to_stop_contact(message: str) -> bool:
+    return bool(_STOP_CONTACT.search(message))
 
 
 def _ran(runs: list[ToolRun], name: str, ok: Optional[bool] = None) -> bool:

@@ -86,6 +86,13 @@ class ChatCompletionRequest(BaseModel):
         "nodes (the tenant, lead, vehicle, SMS history, ...) and the clock (Get Current Date/Time) are not accepted: "
         "the gateway reads or computes them itself. GET /v1/agents lists the nodes and fields each agent reads.",
     )
+    opt_out_gate: bool = Field(
+        True,
+        description="SMS threads: before any agent runs, an opt-out message (STOP, unsubscribe, 'stop texting me', "
+        "'wrong number', ... - the n8n Opt-out Detector's rules) is recorded with public.process_opt_out (write_mode "
+        "applies) and answered with the fixed confirmation, and a customer who already opted out gets no reply "
+        "(<NOOP>). false: skip this check.",
+    )
     reroute_noop: bool = Field(
         True,
         description="When the agent answers <NOOP> to a real message (it belongs to another agent), run the turn once "
@@ -213,11 +220,16 @@ class Choice(BaseModel):
 class RoutingInfo(BaseModel):
     """What happened when the agent answered <NOOP> (see `reroute_noop`)."""
 
-    outcome: Literal["silent_closing", "silent_suppressed", "silent_escalated", "rerouted", "fallback", "silent_confirmed"] = Field(
+    outcome: Literal[
+        "silent_closing", "silent_suppressed", "silent_escalated", "rerouted", "fallback", "silent_confirmed",
+        "opted_out", "silent_opted_out",
+    ] = Field(
         ..., description="silent_closing: the customer only closed the conversation, nothing to send. silent_suppressed / "
         "silent_escalated: a tool already handled the turn. rerouted: another agent answered. fallback: that agent "
         "declined too; the safe fallback was sent and a person paged. silent_confirmed: general declined twice; "
-        "nothing sent, a person paged.",
+        "nothing sent, a person paged. opted_out: the message was an opt-out (n8n Opt-out Detector); it was "
+        "recorded (process_opt_out) and the fixed confirmation sent, no agent ran. silent_opted_out: the customer had "
+        "already opted out; no agent ran and nothing is sent.",
     )
     from_agent: str = Field(..., description="The agent that answered <NOOP>.")
     to_agent: Optional[str] = Field(None, description="The agent the turn was run on next.")

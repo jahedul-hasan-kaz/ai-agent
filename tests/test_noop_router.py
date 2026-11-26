@@ -258,7 +258,9 @@ def test_rerouted_to_general_counts():
 
 @pytest.mark.parametrize("kwargs", [
     {"text": "No thanks"},  # a first decline: the prompt says not to suppress
-    {"text": "I already told you I'm not interested", "agent": "inventory"},  # not General
+    {"text": "Stop calling me, text me instead"},  # calling only: not an opt-out of texts
+    {"text": "Can you stop by Friday to look at it?"},  # "stop by" is not a stop request
+    {"text": "Do you have any used Tacomas?"},
     {"text": "I already told you I'm not interested", "runs": [ToolRun("x", "Suppress_Lead", "code", {}, False, 0)]},
     {"text": "I already told you I'm not interested", "runs": [ToolRun("x", "Escalate_To_Human", "code", {}, True, 0)]},
     # The classifier says complaint: complaint work, not a protected close.
@@ -273,3 +275,35 @@ def test_safety_net_leaves_other_turns_alone(kwargs):
 def test_classifier_repeat_decline_triggers_it_without_the_words():
     out, calls = _net("please just stop", node_data={"Intent Classifier": {"intent": "repeat_decline"}})
     assert calls and out.result.content.startswith("Understood")
+
+
+
+@pytest.mark.parametrize("agent", ["scheduling", "inventory", "value_data_collection", "service_trade_reply", "general"])
+@pytest.mark.parametrize("text", ["Stop texting me, I'm not interested", "Please leave me alone",
+                                  "Take me off your list", "Don't text me anymore", "quit messaging me",
+                                  "I already told you I'm not interested"])
+def test_any_agent_reply_to_a_stop_request_is_suppressed(agent, text):
+    out, calls = _net(text, agent=agent)
+    assert [c.arguments["suppression_category"] for c in calls] == ["repeat_decline"]
+    assert "permanent_dnc" not in calls[0].arguments  # halt + hold only, never a DNC
+    assert out.result.content.startswith("Understood")
+
+
+def test_stop_request_with_a_non_complaint_classifier_is_suppressed():
+    out, calls = _net("Stop texting me", node_data={"Intent Classifier": {"intent": "not_interested_soft"}})
+    assert calls and out.result.content.startswith("Understood")
+
+
+def test_noop_replies_are_left_to_the_router():
+    svc_out, calls = _net_reply("<NOOP>", "Stop texting me")
+    assert calls == [] and svc_out.result.content == "<NOOP>"
+
+
+def _net_reply(reply, text):
+    svc = ChatService(None)
+    svc.tools = StubTools()
+    req = ChatCompletionRequest(model="m", agent="scheduling", messages=[{"role": "user", "content": text}])
+    answer = _Answer(model=None, result=LLMResult(reply, "stop", 1, 1), fallback_used=False,
+                     ctx=SimpleNamespace(pool=None, tenant_id=None))
+    import asyncio
+    return asyncio.run(svc._ensure_repeat_decline_suppressed(req, answer)), svc.tools.calls
