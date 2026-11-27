@@ -22,71 +22,171 @@ _FENCE_BEFORE = re.compile(r"```[a-zA-Z]*\s*$")
 _FENCE_AFTER = re.compile(r"\s*```")
 
 
-def text_tool_calls(content: str, offered: Iterable[str]) -> tuple[list[ToolCall], str]:
-    """Tool calls written into `content` as JSON, for tools in `offered`, and the content without them (and without
-    the ``` fence around them). Shapes: {"name": T, "arguments": {...}} (also "parameters", or the arguments as a
-    JSON string), {"function": {"name": T, "arguments": ...}} and {T: {...}}. JSON naming no offered tool is left."""
-    names = {n.lower(): n for n in offered}
-    if not names or "{" not in content:
+def text_tool_calls(content: str, offered: Any) -> tuple[list[ToolCall], str]:
+    """Tool calls written into `content` as JSON, for tools in `offered`, and the content without that JSON.
+
+    `offered`: the offered tools by name ({name: Tool}, which also lets bare arguments be matched to a tool by its
+    parameters) or just their names. The shapes gpt-oss writes (seen in the regression runs):
+      {"name"|"function"|"type"|"action"|"tool": T, "arguments"|"parameters"|"args"|"input": {...}}
+      {"action": T, <arguments inline>}            {"function": {"name": T, "arguments": ...}}      {T: {...}}
+      a list of those, or several back to back ({...}{...} / {...},{...}), also inside a ``` fence
+      {"message"|"text": "...", "calls"|"tool_calls": [...]}  and  {"action": "message", "message": "..."}
+      bare arguments {"proposed_time": "..."}: the one offered tool whose parameters they fit
+    Invented results ("response", "result") and keys that are not the tool's parameters (lead_id, ...) are dropped.
+    A "message"/"text" written alongside becomes the remaining reply text. JSON that names no offered tool, or fits
+    no tool unambiguously, is left in the text as it was."""
+    tools = _offered_tools(offered)
+    if not tools or not re.search(r"[{\[]", content):
         return [], content
     calls: list[ToolCall] = []
+    texts: list[str] = []
     spans: list[tuple[int, int]] = []
     i = 0
-    while (start := content.find("{", i)) != -1:
+    while (m := re.compile(r"[{\[]").search(content, i)) is not None:
+        start = m.start()
         try:
-            obj, end = _DECODER.raw_decode(content, start)
+            value, end = _DECODER.raw_decode(content, start)
         except ValueError:
             i = start + 1
             continue
-        call = _as_call(obj, names, len(calls))
-        if call is None:
+        found_calls: list[ToolCall] = []
+        found_texts: list[str] = []
+        _collect(value, tools, found_calls, found_texts, len(calls))
+        if not found_calls and not found_texts:
             i = start + 1
             continue
-        calls.append(call)
+        calls += found_calls
+        texts += found_texts
         fence = _FENCE_BEFORE.search(content, 0, start)
         after = _FENCE_AFTER.match(content, end)
         spans.append((fence.start() if fence else start, after.end() if fence and after else end))
         i = end
-    if not calls:
+    if not calls and not texts:
         return [], content
     parts, last = [], 0
     for start, end in spans:
         parts.append(content[last:start])
         last = end
     parts.append(content[last:])
-    rest = re.sub(r"[ \t]+\n", "\n", "".join(parts))
+    rest = "".join(parts)
+    rest = re.sub(r"(?m)^[\s,\[\]]+$", "", rest)  # separators left between removed JSON values
+    rest = re.sub(r"^[\s,]+|[\s,]+$", "", rest)
+    if texts:
+        rest = (rest + "\n" if rest else "") + "\n".join(t.strip() for t in texts if t.strip())
+    rest = re.sub(r"[ \t]+\n", "\n", rest)
     return calls, re.sub(r"\n{3,}", "\n\n", rest).strip()
 
 
-def _as_call(obj: Any, names: dict[str, str], index: int) -> Optional[ToolCall]:
-    if not isinstance(obj, dict):
-        return None
-    if isinstance(obj.get("function"), dict):
+_NAME_KEYS = ("name", "function", "type", "action", "tool", "tool_name", "recipient")
+_ARG_KEYS = ("arguments", "parameters", "args", "input")
+_TEXT_KEYS = ("message", "text", "content", "reply")
+_CALL_LIST_KEYS = ("calls", "tool_calls", "actions", "functions")
+_INVENTED_KEYS = {"response", "result", "results", "output", "ok", "status", "id", "call_id", "lead_id", "tenant_id"}
+# Keys of a tool RESULT the model echoed back ({"ok": true, ..., "message": "Do not claim ..."}): never a call, and its
+# "message" is an instruction to the model, never reply text. Left untouched.
+_RESULT_KEYS = {"ok", "error", "dry_run", "statusCode", "body", "is_valid", "suppression", "suppression_effective",
+                "escalation_id", "would_insert", "cancelled", "schema_version", "nothing_written"}
+
+
+def _offered_tools(offered: Any) -> dict[str, dict[str, Any]]:
+    """{loose name key: {"name": real name, "props": set of parameters or None, "required": set}}."""
+    out: dict[str, dict[str, Any]] = {}
+    items = offered.items() if isinstance(offered, dict) else ((n, None) for n in offered)
+    for name, tool in items:
+        params = getattr(tool, "parameters", None) if tool is not None else None
+        props = set((params or {}).get("properties", {})) if params else None
+        out[_loose(name)] = {"name": name, "props": props, "required": set((params or {}).get("required", []))}
+    return out
+
+
+def _loose(name: str) -> str:
+    key = name.strip().lower()
+    key = key[len("functions."):] if key.startswith("functions.") else key
+    return re.sub(r"[\s\-]+", "_", key)
+
+
+def _collect(value: Any, tools: dict, calls: list[ToolCall], texts: list[str], offset: int) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _collect(item, tools, calls, texts, offset)
+        return
+    if not isinstance(value, dict):
+        return
+    obj = value
+    if _RESULT_KEYS & set(obj):
+        return  # an echoed tool result
+    if isinstance(obj.get("function"), dict):  # {"type": "function", "function": {"name": ..., "arguments": ...}}
         obj = obj["function"]
-    if isinstance(obj.get("name"), str):
-        name = _tool_name(obj["name"], names)
-        args = obj.get("arguments", obj.get("parameters", {}))
-    elif len(obj) == 1:
+    if set(obj) == {"response"} and isinstance(obj["response"], str):
+        texts.append(obj["response"])  # {"response": "..."} on its own: the reply text
+        return
+    # A reply text the model wrapped in JSON, possibly with calls beside it.
+    text = next((obj[k] for k in _TEXT_KEYS if isinstance(obj.get(k), str)), None)
+    nested = next((obj[k] for k in _CALL_LIST_KEYS if isinstance(obj.get(k), list)), None)
+    name_raw = next((obj[k] for k in _NAME_KEYS if isinstance(obj.get(k), str)), None)
+    if name_raw is not None and _loose(name_raw) in ("message", "reply", "text", "respond", "send_message"):
+        name_raw = None  # {"action": "message", "message": "..."}: just the reply
+    if nested is not None:
+        _collect(nested, tools, calls, texts, offset)
+    if name_raw is not None:
+        tool = tools.get(_loose(name_raw))
+        if tool is None:
+            return  # names a tool this agent was not offered (or one that does not exist): leave the JSON alone
+        args = next((obj[k] for k in _ARG_KEYS if k in obj), None)
+        if args is None:  # arguments written inline: {"action": T, "note": ...}
+            args = {k: v for k, v in obj.items() if k not in _NAME_KEYS and k not in _TEXT_KEYS}
+        _add(tool, args, calls, offset)
+        return
+    if len(obj) == 1:  # {T: {...}}
         key, args = next(iter(obj.items()))
-        name = _tool_name(key, names)
-    else:
+        tool = tools.get(_loose(key))
+        if tool is not None:
+            _add(tool, args, calls, offset)
+            return
+    # Nested argument objects beside a text ({"message": ..., "appointment_notes": {...}}) or bare arguments.
+    if text is not None:
+        texts.append(text)
+        for key, sub in obj.items():
+            if key not in _TEXT_KEYS and isinstance(sub, dict):
+                tool = _fit(sub, tools)
+                if tool is not None:
+                    _add(tool, sub, calls, offset)
+        return
+    tool = _fit(obj, tools)
+    if tool is not None:
+        _add(tool, obj, calls, offset)
+
+
+# Never guessed from bare arguments: a wrong guess would cancel a booking, stop a customer's messages or page the
+# team. These run only when the model names them.
+_NO_GUESS = {"Cancel_Appointment", "Suppress_Lead", "Escalate_To_Human"}
+
+
+def _fit(args: dict, tools: dict) -> Optional[dict]:
+    """The single offered tool whose parameters these bare arguments are (all keys are its parameters, its required
+    ones present); None when none or several fit, the tools' parameters are unknown, or the only fit is a tool with
+    side effects that must not be guessed (_NO_GUESS)."""
+    keys = {k for k in args if k not in _INVENTED_KEYS}
+    if not keys:
         return None
-    if name is None:
-        return None
+    fits = [t for t in tools.values() if t["props"] is not None and keys <= t["props"] and t["required"] <= keys
+            and t["name"] not in _NO_GUESS]
+    return fits[0] if len(fits) == 1 else None
+
+
+def _add(tool: dict, args: Any, calls: list[ToolCall], offset: int) -> None:
     if isinstance(args, str):
         try:
             args = json.loads(args or "{}")
         except ValueError:
-            return None
+            return
     if not isinstance(args, dict):
-        return None
-    return ToolCall(f"call_text_{index + 1}", name, args)
-
-
-def _tool_name(raw: str, names: dict[str, str]) -> Optional[str]:
-    key = raw.strip().lower()
-    key = key[len("functions."):] if key.startswith("functions.") else key
-    return names.get(key)
+        return
+    if tool["props"] is not None:
+        args = {k: v for k, v in args.items() if k in tool["props"]}  # drop invented results and stray keys
+    else:
+        args = {k: v for k, v in args.items() if k not in _INVENTED_KEYS}
+    calls.append(ToolCall(f"call_text_{offset + len(calls) + 1}", tool["name"], args))
 
 
 # "I've flagged it", "I'm notifying the team", "a manager will call you", "I'll have someone reach out", ...

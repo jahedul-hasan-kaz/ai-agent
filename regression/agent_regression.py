@@ -11,6 +11,9 @@ The endpoint runs in this process (the app's own FastAPI app over an in-memory t
 database query and log line of one test can be attributed to it: that is where tables_used, function_used and
 is_guard_protect come from. Nothing on disk is changed. dev.env's tools.write_mode is overridden to dry_run for
 this process only (unless --write-mode live), so tools never page the dealer, opt the lead out or write data.
+With store=true (STORE, default) each exchange is written to sms_log like production; a message the database's
+opt-out trigger would turn into a real DNC (public.is_optout_message, e.g. "STOP") is sent without store unless
+--store-optout. The sms_log ids written are in the JSONL report (`stored`).
 
 Set by `seed` (from regression/cases.py): agent_name, input_message, expected_message, intent_classifier, and who the
 test is about: tenant_id, thread_key (SMS) and email (the lead's leads.email). `run` sends each row's own tenant_id,
@@ -64,8 +67,8 @@ TEMPERATURE = 0.8
 TOP_P = 0.9
 TOP_K = 30
 REASONING_EFFORT = "medium"
-MAX_TOKENS = 5000
-STORE = False  # never written to sms_log
+MAX_TOKENS = 10000
+STORE = True  # each exchange is written to sms_log (inbound + outbound), as in production
 
 TABLE = "public.agent_regression_tests"
 RESULTS_DIR = ROOT / "regression" / "results"
@@ -96,6 +99,7 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS tenant_id uuid;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS thread_key text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS email text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS lead_id uuid;
 -- Supabase exposes public tables through PostgREST: with RLS on and no policy, only the service role / owner reads it.
 ALTER TABLE {TABLE} ENABLE ROW LEVEL SECURITY;
 """
@@ -130,48 +134,71 @@ async def _connect():
 # ---- seed ---------------------------------------------------------------------------------------------------------
 
 
+async def _customer(conn, tenant_id: str, lead_id: str, thread_key: str, email: str):
+    """The customer's records the expected replies are written from (see regression/cases.py)."""
+    from regression.cases import Customer
+
+    lead = await conn.fetchrow("SELECT tenant_id, first_name, lower(email) AS email FROM public.leads WHERE id = $1",
+                               UUID(lead_id))
+    if not lead or str(lead["tenant_id"]) != tenant_id:
+        sys.exit(f"lead {lead_id} is not a lead of tenant {tenant_id}")
+    if (lead["email"] or "") != email.lower():
+        print(f"WARNING: lead {lead_id}: the email given differs from leads.email")
+    tenant = await conn.fetchrow(
+        "SELECT slug, main_phone, address, city, state, hours_of_operation FROM public.tenants WHERE id = $1",
+        UUID(tenant_id),
+    )
+    vehicle = await conn.fetchrow(
+        "SELECT year, make, model, mileage, market_value FROM public.lead_vehicles WHERE lead_id = $1 "
+        "ORDER BY is_primary DESC NULLS LAST, created_at DESC LIMIT 1",
+        UUID(lead_id),
+    )
+    hours = tenant["hours_of_operation"]
+    hours = json.loads(hours) if isinstance(hours, str) else (hours or {})
+    address = ", ".join(p for p in (tenant["address"], tenant["city"], tenant["state"]) if p) or None
+    slug = tenant["slug"] or "the dealership"
+    value = float(vehicle["market_value"]) if vehicle and vehicle["market_value"] else None
+    return Customer(
+        tenant_id=tenant_id, lead_id=lead_id, thread_key=thread_key, email=email,
+        first=(lead["first_name"] or "").strip(), dealer=slug, brand=slug.split()[-1].lower(),
+        phone=tenant["main_phone"], address=address if tenant["address"] else None, hours=hours,
+        year=vehicle["year"] if vehicle else None, make=(vehicle["make"] or "") if vehicle else "",
+        model=(vehicle["model"] or "vehicle") if vehicle else "vehicle",
+        mileage=vehicle["mileage"] if vehicle else None, value=value or None,
+    )
+
+
 async def seed(reseed: bool) -> None:
-    from regression.cases import CASES, TARGET
+    """One row per case per customer. A customer's rows are contiguous and their `final` cases come last, so a run
+    (ordered by id) never sends a customer's ordinary cases after one that may end their conversation."""
+    from regression.cases import CUSTOMERS, build
 
     conn = await _connect()
     try:
         await conn.execute(DDL)
-        lead = await conn.fetchrow(
-            "SELECT tenant_id, email FROM public.leads WHERE id = $1", UUID(TARGET["lead_id"])
-        )
-        if not lead or str(lead["tenant_id"]) != TARGET["tenant_id"]:
-            sys.exit(f"lead {TARGET['lead_id']} is not a lead of tenant {TARGET['tenant_id']}")
-        tenant_id, thread_key = UUID(TARGET["tenant_id"]), TARGET["thread_key"]
-        email = (lead["email"] or "").strip().lower() or None
         if reseed:
             await conn.execute(f"TRUNCATE {TABLE} RESTART IDENTITY")
             print("reseed: table truncated")
         existing = {
-            (r["agent_name"], r["input_message"])
-            for r in await conn.fetch(f"SELECT agent_name, input_message FROM {TABLE}")
+            (str(r["lead_id"]), r["agent_name"], r["input_message"])
+            for r in await conn.fetch(f"SELECT lead_id, agent_name, input_message FROM {TABLE}")
         }
-        # Cases already in the table keep their row (and results); their expectation follows cases.py.
-        synced = 0
-        for agent, cases in CASES.items():
-            for c in cases:
-                if (agent, c["input"]) in existing:
-                    status = await conn.execute(
-                        f"UPDATE {TABLE} SET expected_message = $3, intent_classifier = $4::jsonb, last_updated_at = now() "
-                        "WHERE agent_name = $1 AND input_message = $2 "
-                        "AND (expected_message IS DISTINCT FROM $3 OR intent_classifier IS DISTINCT FROM $4::jsonb)",
-                        agent, c["input"], c["expected"], json.dumps(c["classifier"]),
-                    )
-                    synced += int(status.split()[-1])
-        if synced:
-            print(f"updated the expectation of {synced} existing rows")
-        rows = [
-            (agent, c["input"], c["expected"], json.dumps(c["classifier"]), tenant_id, thread_key, email)
-            for agent, cases in CASES.items() for c in cases
-            if (agent, c["input"]) not in existing
-        ]
+        rows = []
+        for tenant_id, lead_id, thread_key, email in CUSTOMERS:
+            customer = await _customer(conn, tenant_id, lead_id, thread_key, email)
+            cases = [(agent, c) for agent, items in build(customer).items() for c in items]
+            # Stable sort: final cases after the others, and a bare STOP (the database's sms_log opt-out trigger records
+            # a DNC for it when stored) last of all.
+            for agent, c in sorted(cases, key=lambda ac: (ac[1]["final"], ac[1]["input"].strip().upper() == "STOP")):
+                if (lead_id, agent, c["input"]) in existing:
+                    continue
+                rows.append((agent, c["input"], c["expected"], json.dumps(c["classifier"]), UUID(tenant_id),
+                             UUID(lead_id), thread_key, email.lower()))
+            print(f"  {customer.dealer:<14} {customer.first or '?':<10} {customer.car:<24} value={customer.value} "
+                  f"phone={'yes' if customer.phone else 'no'} {len(cases)} cases")
         await conn.executemany(
             f"INSERT INTO {TABLE} (agent_name, input_message, expected_message, intent_classifier, tenant_id, "
-            "thread_key, email) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
+            "lead_id, thread_key, email) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)",
             rows,
         )
         print(f"inserted {len(rows)} rows ({len(existing)} already there)")
@@ -333,11 +360,11 @@ def _market_value(cap: dict, node_data: dict, agents_run: set[str]) -> Optional[
 
 
 async def _preflight(conn, targets: set[tuple]) -> None:
-    """Each row's tenant + thread + email must resolve to one lead (the one the gateway will load), or every result
-    would be about someone else."""
+    """Each row's tenant + thread + email must resolve to the row's lead (the one the gateway will load), or every
+    result would be about someone else."""
     from app.customer.store import email_variants, phone_variants
 
-    for tenant_id, thread_key, email in sorted(targets, key=str):
+    for tenant_id, lead_id, thread_key, email in sorted(targets, key=str):
         if tenant_id is None or not (thread_key or email):
             sys.exit(f"rows need a tenant_id and a thread_key or email (got {tenant_id}, {thread_key}, {email})")
         phones = phone_variants(thread_key) if thread_key else []
@@ -350,15 +377,18 @@ async def _preflight(conn, targets: set[tuple]) -> None:
         )
         if not leads:
             sys.exit(f"no lead for tenant {tenant_id}, thread {thread_key}, email {email}")
-        if len(leads) > 1:
-            print(f"WARNING: {len(leads)} leads match thread {thread_key} / email {email}; the newest is used")
         row = leads[0]
-        print(f"target tenant={tenant_id} thread={thread_key} email={'set' if email else 'none'} -> lead {row['id']}")
-        if "opted_out" in (row["status"], row["lifecycle_stage"]) or row["dnc"] or row["blocked"]:
+        if lead_id is not None and row["id"] != lead_id:
+            sys.exit(f"thread {thread_key} / email resolve to lead {row['id']}, not the row's lead {lead_id}")
+        dnc = await conn.fetchval("SELECT count(*) FROM public.dnc WHERE tenant_id = $1 AND phone = ANY($2::text[])",
+                                  tenant_id, phones) if phones else 0
+        print(f"target thread={thread_key} -> lead {row['id']}{f' ({len(leads)} leads match, newest used)' if len(leads) > 1 else ''}")
+        if "opted_out" in (row["status"], row["lifecycle_stage"]) or row["dnc"] or row["blocked"] or dnc:
             print(f"WARNING: lead {row['id']} is opted out / DNC / blocked: every agent will answer <NOOP>")
 
 
-async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
+async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: int, store: bool,
+              store_optout: bool = False) -> None:
     import httpx
 
     _install_capture()
@@ -375,41 +405,71 @@ async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
         params.append(ids)
         where.append(f"id = ANY(${len(params)}::bigint[])")
     rows = await conn.fetch(
-        f"SELECT id, agent_name, input_message, expected_message, intent_classifier, tenant_id, thread_key, email "
-        f"FROM {TABLE}{' WHERE ' + ' AND '.join(where) if where else ''} ORDER BY id",
+        f"SELECT id, agent_name, input_message, expected_message, intent_classifier, tenant_id, lead_id, thread_key, "
+        f"email FROM {TABLE}{' WHERE ' + ' AND '.join(where) if where else ''} ORDER BY id",
         *params,
     )
     if not rows:
         print("no rows to run (seed first?)")
         await conn.close()
         return
-    await _preflight(conn, {(r["tenant_id"], r["thread_key"], r["email"]) for r in rows})
+    await _preflight(conn, {(r["tenant_id"], r["lead_id"], r["thread_key"], r["email"]) for r in rows})
+    # sms_log's trg_sms_log_optout_dnc records a real DNC (and ta_enter_sms_stop) for a stored inbound message that
+    # public.is_optout_message() matches, whatever tools.write_mode is. Those rows run without store unless asked.
+    optout_ids = set()
+    if store and not store_optout:
+        for r in rows:
+            if await conn.fetchval("SELECT public.is_optout_message($1)", r["input_message"]):
+                optout_ids.add(r["id"])
+        if optout_ids:
+            print(f"{len(optout_ids)} rows are opt-out messages: run without store (--store-optout to store them)")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = RESULTS_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
     started_all = time.perf_counter()
     scores: dict[str, list[float]] = {}
+    lock = asyncio.Lock()  # one DB connection and one report file, shared by the workers
+    done = 0
+
+    # A customer's rows run in order, one at a time (with store=true each turn sees the ones before it in sms_log);
+    # different customers run side by side, up to `concurrency`.
+    queues: dict[tuple, list] = {}
+    for r in rows:
+        queues.setdefault((r["tenant_id"], r["thread_key"], r["email"]), []).append(r)
 
     async with app.router.lifespan_context(app):
         service = app.state.chat_service
-        print(f"tools write_mode={service.tools.settings.write_mode if service.tools else 'off'}; "
-              f"{len(rows)} rows; report {report_path}")
+        print(f"tools write_mode={service.tools.settings.write_mode if service.tools else 'off'}; store={store}; "
+              f"max_tokens={MAX_TOKENS}; {len(rows)} rows, {len(queues)} customers, concurrency {concurrency}; "
+              f"report {report_path}", flush=True)
         key = service.manager.config.service_api_key
         headers = {"X-API-Key": key} if key else {}
         transport = httpx.ASGITransport(app=app)
+        gate = asyncio.Semaphore(max(1, concurrency))
         async with httpx.AsyncClient(transport=transport, base_url="http://regression", timeout=None) as client:
-            for n, row in enumerate(rows, 1):
+
+            async def customer(queue: list) -> None:
+                async with gate:
+                    for row in queue:
+                        await one(row)
+
+            async def one(row) -> None:
+                nonlocal done
                 classifier = row["intent_classifier"]
                 classifier = json.loads(classifier) if isinstance(classifier, str) else classifier
                 node_data = {"Intent Classifier": classifier} if classifier else {}
+                # The endpoint stores into exactly one log (store needs exactly one thread key): a stored turn is an SMS
+                # turn (sms_log), so it goes without email_thread_key; an unstored one carries both keys.
+                store_row = store and row["id"] not in optout_ids
+                send_email = bool(row["email"]) and not (store_row and row["thread_key"])
                 body = {
                     "model": MODEL,
                     "agent": row["agent_name"],
                     "messages": [{"role": "user", "content": row["input_message"]}],
                     "tenant_id": str(row["tenant_id"]),
                     **({"sms_thread_key": row["thread_key"]} if row["thread_key"] else {}),
-                    **({"email_thread_key": row["email"]} if row["email"] else {}),
-                    "store": STORE,
+                    **({"email_thread_key": row["email"]} if send_email else {}),
+                    "store": store_row,
                     "temperature": TEMPERATURE,
                     "top_p": TOP_P,
                     "top_k": TOP_K,
@@ -466,26 +526,34 @@ async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
                     "function_used": functions,
                     "latency": data.get("latency_ms", wall_ms) if ok else wall_ms,
                 }
-                await conn.execute(
-                    f"""UPDATE {TABLE} SET output_message=$2, score=$3, tool_used=$4, tool_category=$5, tool_urgency=$6,
-                        re_route_agent_name=$7, is_noop=$8, is_declined=$9, is_guard_protect=$10,
-                        intent_classifier=$11::jsonb, select_market_value=$12, combined_message=$13, tables_used=$14,
-                        function_used=$15, latency=$16, last_updated_at=now() WHERE id=$1""",
-                    row["id"], *update.values(),
-                )
-                with report_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps({
-                        "id": row["id"], "agent": row["agent_name"], "input": row["input_message"],
-                        "expected": row["expected_message"], **update, "judge_reason": reason, "status": status,
-                        "routing": routing, "tool_calls": calls, "wall_ms": wall_ms,
-                        "warnings": [m for lvl, m in cap["logs"] if lvl in ("WARNING", "ERROR")],
-                        "at": datetime.now(timezone.utc).isoformat(),
-                    }, default=str, ensure_ascii=False) + "\n")
-                if score is not None:
-                    scores.setdefault(row["agent_name"], []).append(score)
-                print(f"[{n}/{len(rows)}] id={row['id']} {row['agent_name']:<22} score={score} "
-                      f"tools={','.join(update['tool_used']) or '-'} route={outcome or '-'} "
-                      f"{update['latency']}ms | {output[:90]!r}", flush=True)
+                async with lock:
+                    await conn.execute(
+                        f"""UPDATE {TABLE} SET output_message=$2, score=$3, tool_used=$4, tool_category=$5,
+                            tool_urgency=$6, re_route_agent_name=$7, is_noop=$8, is_declined=$9, is_guard_protect=$10,
+                            intent_classifier=$11::jsonb, select_market_value=$12, combined_message=$13,
+                            tables_used=$14, function_used=$15, latency=$16, last_updated_at=now() WHERE id=$1""",
+                        row["id"], *update.values(),
+                    )
+                    with report_path.open("a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "id": row["id"], "lead_id": row["lead_id"], "agent": row["agent_name"],
+                            "input": row["input_message"], "expected": row["expected_message"], **update,
+                            "judge_reason": reason, "status": status, "routing": routing, "tool_calls": calls,
+                            # the sms_log rows this exchange wrote (store=true), to find or remove them later
+                            "stored": data.get("stored") if ok else None, "wall_ms": wall_ms,
+                            "warnings": [m for lvl, m in cap["logs"] if lvl in ("WARNING", "ERROR")],
+                            "at": datetime.now(timezone.utc).isoformat(),
+                        }, default=str, ensure_ascii=False) + "\n")
+                    if score is not None:
+                        scores.setdefault(row["agent_name"], []).append(score)
+                    done += 1
+                    stored = (data.get("stored") or {}) if ok else {}
+                    print(f"[{done}/{len(rows)}] id={row['id']} {row['agent_name']:<22} score={score} "
+                          f"tools={','.join(update['tool_used']) or '-'} route={outcome or '-'} "
+                          f"stored={'error: ' + stored['error'][:60] if stored.get('error') else bool(stored.get('inbound_id'))} "
+                          f"{update['latency']}ms | {output[:80]!r}", flush=True)
+
+            await asyncio.gather(*(customer(q) for q in queues.values()))
 
     await conn.close()
     print(f"\ndone in {int(time.perf_counter() - started_all)}s; report {report_path}")
@@ -499,18 +567,23 @@ def main() -> None:
                         help="tools.write_mode for this process (default dry_run: tools write nothing)")
     sub = parser.add_subparsers(dest="command", required=True)
     s = sub.add_parser("seed", help="create the table and insert the cases")
-    s.add_argument("--reseed", action="store_true", help="delete every row first")
+    s.add_argument("--reseed", action="store_true", help="truncate the table first")
     r = sub.add_parser("run", help="run rows through /v1/chat/completions and update them")
     r.add_argument("--agent", help="only this agent's rows")
     r.add_argument("--pending", action="store_true", help="only rows never run")
     r.add_argument("--ids", type=int, nargs="*", default=[], help="only these row ids")
+    r.add_argument("--concurrency", type=int, default=1, help="customers run side by side (default 1)")
+    r.add_argument("--no-store", action="store_true", help="do not write the exchanges to sms_log")
+    r.add_argument("--store-optout", action="store_true",
+                   help="also store opt-out messages (the database trigger then records a real DNC for the lead)")
     args = parser.parse_args()
 
     _load_env(args.write_mode)
     if args.command == "seed":
         asyncio.run(seed(args.reseed))
     else:
-        asyncio.run(run(args.agent, args.pending, args.ids))
+        asyncio.run(run(args.agent, args.pending, args.ids, args.concurrency, STORE and not args.no_store,
+                        args.store_optout))
 
 
 if __name__ == "__main__":

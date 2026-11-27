@@ -3,6 +3,8 @@ raised for tool requests, tool calls written as text run for real, and unbacked 
 removed."""
 from types import SimpleNamespace
 
+import pytest
+
 from app.llm.base import LLMRequest, LLMResult, ToolCall, ToolSpec
 from app.llm.model_manager import ModelManager
 from app.llm.settings import AgentConfig
@@ -249,3 +251,92 @@ def test_a_fixed_reply_after_the_check_is_kept(client, providers):  # noqa: F811
                                   LLMResult("Friday at 4 - does 4 PM work, or is earlier better?", "stop", 1, 1)]
     data = _post(client, agent="scheduling", messages=[{"role": "user", "content": "Friday at 4 works"}]).json()
     assert data["choices"][0]["message"]["content"] == "Friday at 4 - does 4 PM work, or is earlier better?"
+
+
+# ---- tool calls written as text: the shapes gpt-oss produced in the regression runs ---------------------------
+
+from app.tools.registry import AGENT_TOOLS, ALL_TOOLS  # noqa: E402
+
+
+def _tools(agent):
+    return {n: ALL_TOOLS[n] for n in AGENT_TOOLS[agent]}
+
+
+def _calls(text, agent):
+    calls, rest = text_tool_calls(text, _tools(agent))
+    return [(c.name, c.arguments) for c in calls], rest
+
+
+@pytest.mark.parametrize("text,agent,expected", [
+    # bare arguments: the one offered tool they fit (regression rows 40, 338, 367)
+    ('{"proposed_time":"Saturday, Nov 28 at 11 AM"}', "scheduling",
+     [("Validate_Appointment", {"proposed_time": "Saturday, Nov 28 at 11 AM"})]),
+    ('{"lead_id":"ce757154","appointment_datetime":null,"note":"Wants to sell."}', "value_data_collection",
+     [("Save_Appointment_Notes", {"appointment_datetime": None, "note": "Wants to sell."})]),
+    # "function" / "type" as the tool's name; an invented "response" is dropped (rows 70, 142)
+    ('{"function":"Save_Appointment_Notes","arguments":{"appointment_datetime":null,"note":"owes $9k"},'
+     '"response":"Your notes have been saved."}', "value_data_collection",
+     [("Save_Appointment_Notes", {"appointment_datetime": None, "note": "owes $9k"})]),
+    ('{"type":"Validate_Appointment","arguments":{"proposed_time":"2026-12-04 20:00"}}', "scheduling",
+     [("Validate_Appointment", {"proposed_time": "2026-12-04 20:00"})]),
+    # a list, with a loosely spelled name and a stray argument (row 174)
+    ('[{"type":"Update_Mileage","arguments":{"vehicle":"Highlander","mileage":180000}},'
+     '{"type":"Save_Appointment_Notes","arguments":{"appointment_datetime":null,"note":"180k"}}]', "value_data_collection",
+     [("Update_mileage", {"mileage": 180000}), ("Save_Appointment_Notes", {"appointment_datetime": None, "note": "180k"})]),
+    # objects back to back, arguments inline under "action" (rows 74, 275)
+    ('{"function":"Update_mileage","arguments":{"mileage":180000},"response":"updated"},'
+     '{"function":"Save_Appointment_Notes","arguments":{"appointment_datetime":null,"note":"x"},"response":"saved"}',
+     "value_data_collection",
+     [("Update_mileage", {"mileage": 180000}), ("Save_Appointment_Notes", {"appointment_datetime": None, "note": "x"})]),
+    ('{"action":"Save_Appointment_Notes","appointment_datetime":null,"note":"Highlander"}', "value_data_collection",
+     [("Save_Appointment_Notes", {"appointment_datetime": None, "note": "Highlander"})]),
+])
+def test_regression_shapes_become_real_calls(text, agent, expected):
+    calls, rest = _calls(text, agent)
+    assert calls == expected and rest == ""
+
+
+def test_reply_text_beside_the_calls_is_kept():
+    # rows 67, 166, 266: {"message"|"text": ..., ...calls}
+    calls, rest = _calls('{"text":"What year is it?","calls":[{"type":"Save_Appointment_Notes","arguments":'
+                         '{"appointment_datetime":null,"note":"n"}},{"type":"Ask_Mileage","arguments":{}}]}',
+                         "value_data_collection")
+    assert calls == [("Save_Appointment_Notes", {"appointment_datetime": None, "note": "n"})] and rest == "What year is it?"
+    calls, rest = _calls('{"message":"Sure - what is the mileage?","appointment_notes":{"appointment_datetime":null,'
+                         '"note":"just selling"}}', "value_data_collection")
+    assert calls == [("Save_Appointment_Notes", {"appointment_datetime": None, "note": "just selling"})]
+    assert rest == "Sure - what is the mileage?"
+    assert _calls('{"action":"message","message":"Could you share the year?"}', "value_data_collection") == (
+        [], "Could you share the year?")
+    calls, rest = _calls('Thanks!\n```json\n[{"type":"Save_Appointment_Notes","arguments":{"note":"x"}}]\n```',
+                         "value_data_collection")
+    assert calls == [("Save_Appointment_Notes", {"note": "x"})] and rest == "Thanks!"
+
+
+@pytest.mark.parametrize("text,agent", [
+    # an echoed tool result: its "message" is an instruction to the model, never reply text (row 325)
+    ('{"ok": true, "category": "value_request", "message": "Do not claim notification."}', "inventory"),
+    # a tool this agent was not offered (row 137: Suppress_Lead on inventory), or one that does not exist
+    ('{"reason":"declined","suppression_category":"repeat_decline"}', "inventory"),
+    ('{"type":"Ask_Mileage","arguments":{"vehicle":"Highlander"}}', "value_data_collection"),
+    # an invented record (row 340), and arguments that fit several tools
+    ('{"lead_id":"x","inbound_message":"yes","type":"appointment"}', "scheduling"),
+    ('{"reason":"wants a person"}', "scheduling"),
+    # ordinary replies
+    ("We have 2 used RAV4s from $27,800.", "inventory"),
+    ("Price is {about} $5k", "inventory"),
+])
+def test_left_alone(text, agent):
+    assert _calls(text, agent) == ([], text)
+
+
+def test_a_bare_argument_call_runs_through_the_api(client, providers):  # noqa: F811
+    providers["claude"].script = [
+        LLMResult('{"proposed_time":"Tuesday at 2pm"}', "stop", 1, 1),
+        LLMResult("Tuesday at 2PM works - want me to lock it in?", "stop", 1, 1),
+    ]
+    data = _post(client, agent="scheduling").json()
+    assert data["choices"][0]["message"]["content"] == "Tuesday at 2PM works - want me to lock it in?"
+    [call] = data["tool_calls"]
+    assert call["name"] == "Validate_Appointment" and call["from_text"] is True
+    assert call["arguments"] == {"proposed_time": "Tuesday at 2pm"}
