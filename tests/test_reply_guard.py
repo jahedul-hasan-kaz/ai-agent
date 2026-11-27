@@ -205,3 +205,47 @@ def test_lane_agents_get_their_boundary_addenda(client, providers):  # noqa: F81
     assert "inventory-lane-boundary-v1" in inventory and "scheduling-lane-boundary-v1" in scheduling
     assert "LANE BOUNDARY" in value
     assert not any(m in general for m in ("lane-boundary-v1", "LANE BOUNDARY"))
+
+
+# ---- A. unbacked booking claims --------------------------------------------------------------------------------
+
+from app.services.reply_guard import unbacked_booking, without_booking_claims  # noqa: E402
+
+
+def test_booking_claims_and_non_claims():
+    claims = ["Your appraisal is scheduled for Friday at 4 pm.", "You're all set for Friday at 3PM!",
+              "You're booked for tomorrow at 2.", "I've booked you in for Tuesday at 10.", "I've got you down for Friday at 4.",
+              "Your visit is confirmed for Monday.", "Locked in for 4pm Friday!"]
+    fine = ["See you Friday at 3!", "Sounds good, see you then!", "Would Friday at 4 work?", "Want me to set that up?",
+            "Thanks, have a great day!", "I can get that set up for you - what time works?", "We have 2 RAV4s in stock."]
+    assert all(unbacked_booking(c, []) for c in claims)
+    assert not any(unbacked_booking(f, []) for f in fine)
+    saved = SimpleNamespace(name="Save_Appointment_Notes", ok=True, arguments={"appointment_datetime": "2026-11-27T23:00:00.000Z"})
+    note_only = SimpleNamespace(name="Save_Appointment_Notes", ok=True, arguments={"appointment_datetime": None})
+    failed = SimpleNamespace(name="Save_Appointment_Notes", ok=False, arguments={"appointment_datetime": "2026-11-27T23:00:00.000Z"})
+    assert unbacked_booking(claims[1], [saved]) is None  # backed by a saved appointment
+    assert unbacked_booking(claims[1], [note_only]) and unbacked_booking(claims[1], [failed])
+    assert without_booking_claims("Got it. Your appraisal is scheduled for Friday at 4 pm. See you then!") == "Got it. See you then!"
+
+
+def test_an_unbacked_booking_is_asked_again_then_removed(client, providers):  # noqa: F811
+    claim = LLMResult("Got it, Artrice. Your appraisal is scheduled for Friday at 4 pm. See you then!", "stop", 1, 1)
+    providers["claude"].script = [claim, claim]
+    data = _post(client, agent="scheduling", messages=[{"role": "user", "content": "can I come see it tomorrow at 4pm"}]).json()
+    assert data["choices"][0]["message"]["content"] == "Got it, Artrice. See you then!"
+    first, second = providers["claude"].requests
+    assert "no appointment was saved" not in first.messages[0]["content"]
+    assert "no appointment was saved" in second.messages[0]["content"]
+
+
+def test_a_claim_only_reply_becomes_an_honest_question(client, providers):  # noqa: F811
+    providers["claude"].script = [LLMResult("You're all set for Friday at 4!", "stop", 1, 1)] * 2
+    data = _post(client, agent="scheduling", messages=[{"role": "user", "content": "Friday at 4 works"}]).json()
+    assert data["choices"][0]["message"]["content"].startswith("Thanks! I want to make sure that time is open")
+
+
+def test_a_fixed_reply_after_the_check_is_kept(client, providers):  # noqa: F811
+    providers["claude"].script = [LLMResult("You're all set for Friday at 4!", "stop", 1, 1),
+                                  LLMResult("Friday at 4 - does 4 PM work, or is earlier better?", "stop", 1, 1)]
+    data = _post(client, agent="scheduling", messages=[{"role": "user", "content": "Friday at 4 works"}]).json()
+    assert data["choices"][0]["message"]["content"] == "Friday at 4 - does 4 PM work, or is earlier better?"

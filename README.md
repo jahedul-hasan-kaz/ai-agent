@@ -184,6 +184,16 @@ not offered even though some prompts mention them.
     `Escalate_To_Human` call returning `ok: true` this turn is asked once more, with the reason added to the
     system prompt. If the claim comes back, its sentences are removed; if nothing is left, the reply becomes
     "Thanks for letting me know." plus the dealership's main number when known.
+- **Booking claims.** A reply that says an appointment is booked ("scheduled for Friday at 4", "you're all set",
+  "I've got you down for…") with no appointment saved by Save_Appointment_Notes this turn is asked again once (with
+  the reason), then the claim is removed; a reply that was only the claim becomes "Thanks! I want to make sure that
+  time is open before I lock it in - what day and time work best for you?". "See you Friday" alone is not a claim.
+- **Empty replies.** When the model's reply is still empty after `empty_retries`, a customer thread gets n8n's safe
+  fallback ("…someone from our team will follow up shortly…") and Escalate_To_Human pages the team (`routing.outcome`
+  `empty_fallback`). Only when the page succeeded (dry runs count); otherwise the `empty_response` error stands.
+- **Value questions.** When Inventory or Scheduling answers a plain value question ("what would you give me for my
+  car?", "what's it worth?") itself, without a tool, the turn is run on Value Data Collection (`rerouted`). "How
+  much is the RAV4?" stays with Inventory; if Value declines, the first reply is kept.
 - **SMS opt-out** (`app/services/opt_out.py`, a port of n8n's Opt-out Detector; on by default, `"opt_out_gate":
   false` turns it off). Before any agent runs on an SMS thread with a known lead:
   - an opt-out message (STOP and its typos, unsubscribe, "stop texting me", "leave me alone", "take me off your

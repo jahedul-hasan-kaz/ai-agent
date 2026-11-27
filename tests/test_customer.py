@@ -186,7 +186,8 @@ def test_only_the_value_agent_sees_vehicle_values(customer_client, agent, shows)
         "model": "claude", "agent": agent, "use_tools": False, "tenant_id": TENANT, "sms_thread_key": "+15551234567",
         "messages": [{"role": "user", "content": "What would you give me for my car?"}],
     })
-    system = providers["claude"].requests[-1].messages[0]["content"]
+    # The asked agent's own prompt (a value question asked of inventory/scheduling is then re-routed to value).
+    system = providers["claude"].requests[0].messages[0]["content"]
     assert ("estimated market value $38,050" in system) is shows
     assert "2022 Kia Telluride EX: 37,000 mi" in system  # vehicle and mileage stay visible to every agent
     assert ("never state or estimate what a vehicle is worth" in system) is not shows

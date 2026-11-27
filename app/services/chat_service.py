@@ -29,7 +29,10 @@ from app.services.agent_prompts import (
     AgentPrompt, CHARS_PER_TOKEN, addendum, estimate_tokens, get_agent, normalize, runtime_context,
 )
 from app.services.node_data import DATABASE_NODES
-from app.services.reply_guard import retry_note, text_tool_calls, unevidenced_claim, without_claims
+from app.services.reply_guard import (
+    BOOKING_FALLBACK, booking_retry_note, retry_note, text_tool_calls, unbacked_booking, unevidenced_claim, without_booking_claims,
+    without_claims,
+)
 from app.tools.base import Tool, ToolContext
 from app.llm.base import ToolCall
 from app.tools.escalation import is_repeat_decline, protected_close_category
@@ -354,16 +357,22 @@ class ChatService:
             )
             if not result.tool_calls or not tools or final_round:
                 claim = unevidenced_claim(result.content, runs) if tools else None
-                if claim and not rechecked:
-                    # Claims a hand-off no Escalate_To_Human call backs: ask once more, told why.
-                    logger.warning("reply claims a hand-off without an escalation ({!r}); asking again", claim)
+                booking = unbacked_booking(result.content, runs) if tools else None
+                if (claim or booking) and not rechecked:
+                    # Claims a hand-off no Escalate_To_Human call backs, or a booking no saved appointment backs:
+                    # ask once more, told why.
+                    logger.warning("reply claims {!r} without evidence; asking again", claim or booking)
                     rechecked = True
-                    system = {**request.messages[0], "content": request.messages[0]["content"] + retry_note(runs, tools)}
+                    note = (retry_note(runs, tools) if claim else "") + (booking_retry_note(tools) if booking else "")
+                    system = {**request.messages[0], "content": request.messages[0]["content"] + note}
                     request = replace(request, messages=[system, *request.messages[1:]])
                     continue
                 if claim:
-                    answer.result = replace(result, content=await self._without_claims(result.content, ctx))
+                    answer.result = replace(answer.result, content=await self._without_claims(answer.result.content, ctx))
                     logger.warning("reply still claimed a hand-off ({!r}); claim removed", claim)
+                if booking:
+                    answer.result = replace(answer.result, content=without_booking_claims(answer.result.content) or BOOKING_FALLBACK)
+                    logger.warning("reply still claimed a booking ({!r}); claim removed", booking)
                 break
             rounds += 1
             request.messages.append({
@@ -459,8 +468,69 @@ class ChatService:
                        routing=routing)
 
     async def _routed_answer(self, req: ChatCompletionRequest, tooling=None) -> _Answer:
-        answer = await self._route_noop(req, await self._answer(req, tooling))
+        try:
+            answer = await self._answer(req, tooling)
+        except LLMError as exc:
+            fallback = await self._empty_fallback(req, exc, tooling[0] if tooling else None)
+            if fallback is None:
+                raise
+            return fallback
+        answer = await self._route_noop(req, answer)
+        answer = await self._reroute_value_question(req, answer)
         return await self._ensure_repeat_decline_suppressed(req, answer)
+
+    async def _empty_fallback(
+        self, req: ChatCompletionRequest, exc: LLMError, ctx: Optional[ToolContext]
+    ) -> Optional[_Answer]:
+        """n8n's Empty Reply Detector for a model that keeps answering with nothing: the safe fallback text and a page
+        to the team, instead of an error to the customer. Only for a customer thread (someone to follow up with) and
+        only when the page succeeded (dry runs count), since the fallback promises a follow-up; otherwise None."""
+        if (exc.code != "empty_response" or not req.reroute_noop or req.tenant_id is None
+                or not (req.sms_thread_key or req.email_thread_key)):
+            return None
+        origin = normalize(req.agent)
+        message, _ = await self._turn_text(req, ctx)
+        complaint = ((req.node_data or {}).get("Intent Classifier") or {}).get("complaint_signals") is True
+        try:
+            page = await self._page_for_noop(req, origin, ctx, complaint, message)
+        except Exception as page_exc:  # noqa: BLE001 - no page: report the original error instead
+            logger.warning("empty reply fallback: page failed ({})", f"{type(page_exc).__name__}: {page_exc}"[:200])
+            return None
+        if page is None or not page.ok:
+            return None
+        ctx = ctx or await self._context(req)
+        text = noop_router.fallback_text(origin, await self._first_name(ctx), complaint)
+        logger.warning("{}; sent the safe fallback and paged the team", exc.message)
+        return self._fixed_answer(req, text, noop_router.Routing("empty_fallback", origin), [page], ctx)
+
+    async def _reroute_value_question(self, req: ChatCompletionRequest, answer: _Answer) -> _Answer:
+        """Inventory or Scheduling answered a plain value question ("what would you give me for my car?") itself
+        instead of declining it: the Value agent owns values (mileage first, the value rules), so the turn is run there,
+        as the n8n re-router would after a <NOOP>. Kept as is when the first agent used a tool, the turn was already
+        routed, or the Value agent declines too."""
+        origin = normalize(req.agent)
+        if (not req.reroute_noop or answer.routing is not None or origin not in ("inventory", "scheduling")
+                or answer.runs or noop_router.is_noop(answer.result.content)):
+            return answer
+        message, _ = await self._turn_text(req, answer.ctx)
+        if not noop_router.asks_for_value(message):
+            return answer
+        target = "value_data_collection"
+        logger.info("{} answered a value question: re-running on {}", origin, target)
+        try:
+            second = await self._answer(req.model_copy(update={"agent": target}))
+        except LLMError as exc:
+            logger.warning("value re-route failed ({}); keeping {}'s reply", exc.message[:200], origin)
+            return answer
+        if noop_router.is_noop(second.result.content):
+            return answer
+        return _Answer(
+            model=second.model, result=second.result, fallback_used=answer.fallback_used or second.fallback_used,
+            prompt_tokens=answer.prompt_tokens + second.prompt_tokens,
+            completion_tokens=answer.completion_tokens + second.completion_tokens,
+            runs=answer.runs + second.runs, ctx=second.ctx or answer.ctx,
+            routing=noop_router.Routing("rerouted", origin, target),
+        )
 
     _SUPPRESSED_REPLY = "Understood — I'll make sure you don't get further messages from us. Sorry for the bother."
     _SUPPRESS_FAILED_REPLY = "Sorry for the bother. Reply STOP and you won't receive further messages."
@@ -662,12 +732,15 @@ class ChatService:
             final["tool_calls"] = [c.model_dump() for c in tool_calls]
             return final
 
+        first, stream_ctx = True, None
         try:
             tooling = await self._tooling(req, await self._context(req))
+            stream_ctx = tooling[0]
             gated = await self._opt_out_gate(req, tooling[0])
             if gated or tooling[1]:
                 answer = gated or await self._routed_answer(req, tooling)
                 reply = answer.result.content.strip()
+                first = False
                 yield _event(chunk(answer.model, {"role": "assistant", "content": ""}))
                 yield _event(chunk(answer.model, {"content": reply}))
                 final = final_chunk(
@@ -681,7 +754,7 @@ class ChatService:
                     final["stored"] = stored.model_dump()
                 yield _event(final)
             else:
-                first, parts = True, []
+                parts = []
                 request = await self.build_request(req, tooling[0])
                 async for model, item in self.manager.stream(request, primary.id, empty_retries=req.empty_retries):
                     if isinstance(item, StreamDone):
@@ -720,7 +793,19 @@ class ChatService:
                         item = "".join(parts)
                     yield _event(chunk(model, {"content": item}))
         except LLMError as exc:
-            yield _event(error_body(exc))
+            fallback = await self._empty_fallback(req, exc, stream_ctx) if first else None
+            if fallback is None:
+                yield _event(error_body(exc))
+            else:
+                reply = fallback.result.content
+                yield _event(chunk(fallback.model, {"role": "assistant", "content": ""}))
+                yield _event(chunk(fallback.model, {"content": reply}))
+                final = final_chunk(fallback.model, "stop", 0, 0, False, fallback.tools_used, fallback.tool_calls)
+                final["routing"] = fallback.routing_info.model_dump()
+                stored = await self._store(req, reply)
+                if stored:
+                    final["stored"] = stored.model_dump()
+                yield _event(final)
         yield "data: [DONE]\n\n"
 
 

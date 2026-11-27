@@ -147,3 +147,57 @@ def retry_note(runs: Iterable[Any], offered: Iterable[str]) -> str:
         "reply again following your instructions; giving the dealership phone number is fine. Output only the "
         "message text."
     )
+
+
+# ---- unbacked booking claims ----------------------------------------------------------------------------------
+# "You're set for Friday at 4", "your appraisal is scheduled for…", "I've booked you…": true only after
+# Save_Appointment_Notes saved an appointment time this turn (it refuses a time Validate_Appointment did not confirm),
+# the prompts' HARD RULE 0 / 2 and n8n's Output Validator. "See you Friday" alone is not a claim (a closing may say it).
+_BOOKED = r"(?:scheduled|booked|confirmed|locked\s+in|reserved|all\s+set|set|on\s+the\s+calendar|on\s+the\s+books)"
+_BOOKING_CLAIM = re.compile(
+    rf"\b(?:you'?re|you\s+are|we'?re|we\s+are|it'?s|it\s+is|that'?s|that\s+is|everything'?s|everything\s+is)\s+(?:all\s+)?{_BOOKED}\b"
+    rf"|\byour\s+(?:\w+\s+){{0,2}}(?:appointment|appraisal|visit|test\s+drive|call|time|slot)\s+(?:is|has\s+been)\s+(?:now\s+)?{_BOOKED}\b"
+    r"|\b(?:i'?ve|i\s+have|we'?ve|we\s+have)\s+(?:\w+\s+)?(?:booked|scheduled|confirmed|locked\s+in|reserved|set\s+up)\b"
+    r"|\b(?:got|have|put)\s+you\s+(?:down|in|on\s+the\s+(?:calendar|schedule|books))\b"
+    r"|\b(?:scheduled|booked|confirmed|locked\s+in)\s+(?:you\s+)?for\s+(?:today|tomorrow|tonight|this|next|mon|tue|wed|thu|fri|sat|sun|\d)",
+    re.I,
+)
+
+
+def booked(runs: Iterable[Any]) -> bool:
+    """Save_Appointment_Notes saved an appointment time this turn (dry runs count)."""
+    return any(r.name == "Save_Appointment_Notes" and r.ok and (getattr(r, "arguments", None) or {}).get("appointment_datetime")
+               for r in runs)
+
+
+def unbacked_booking(reply: str, runs: Iterable[Any]) -> Optional[str]:
+    """The phrase claiming an appointment is booked when no appointment was saved this turn; None otherwise."""
+    runs = list(runs)
+    if booked(runs):
+        return None
+    match = _BOOKING_CLAIM.search(reply)
+    return match.group(0) if match else None
+
+
+def without_booking_claims(reply: str) -> str:
+    sentences = re.split(r"(?<=[.!?])\s+", reply.strip())
+    return " ".join(s for s in sentences if not _BOOKING_CLAIM.search(s)).strip()
+
+
+BOOKING_FALLBACK = "Thanks! I want to make sure that time is open before I lock it in - what day and time work best for you?"
+
+
+def booking_retry_note(offered: Iterable[str]) -> str:
+    offered = set(offered)
+    if {"Validate_Appointment", "Save_Appointment_Notes"} <= offered:
+        how = ("Call Validate_Appointment for the exact day and time, then Save_Appointment_Notes with its "
+               "confirmed_datetime, and only then confirm; if you do not, do not say it is booked.")
+    else:
+        how = ("You cannot book appointments: do not say anything is scheduled, booked, confirmed or set. Offer to set "
+               "up the visit or return <NOOP> if this is not your topic.")
+    return (
+        "\n\n=== REPLY CHECK (gateway) ===\n"
+        "Your previous draft told the customer an appointment is booked/scheduled/confirmed, but no appointment was "
+        f"saved this turn, so that is not true. {how} Write the reply again following your instructions. Output only "
+        "the message text."
+    )

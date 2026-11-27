@@ -222,14 +222,15 @@ class RoutingInfo(BaseModel):
 
     outcome: Literal[
         "silent_closing", "silent_suppressed", "silent_escalated", "rerouted", "fallback", "silent_confirmed",
-        "opted_out", "silent_opted_out",
+        "opted_out", "silent_opted_out", "empty_fallback",
     ] = Field(
         ..., description="silent_closing: the customer only closed the conversation, nothing to send. silent_suppressed / "
         "silent_escalated: a tool already handled the turn. rerouted: another agent answered. fallback: that agent "
         "declined too; the safe fallback was sent and a person paged. silent_confirmed: general declined twice; "
         "nothing sent, a person paged. opted_out: the message was an opt-out (n8n Opt-out Detector); it was "
         "recorded (process_opt_out) and the fixed confirmation sent, no agent ran. silent_opted_out: the customer had "
-        "already opted out; no agent ran and nothing is sent.",
+        "already opted out; no agent ran and nothing is sent. empty_fallback: the model kept returning an empty reply; "
+        "the safe fallback was sent and a person paged (instead of an empty_response error).",
     )
     from_agent: str = Field(..., description="The agent that answered <NOOP>.")
     to_agent: Optional[str] = Field(None, description="The agent the turn was run on next.")

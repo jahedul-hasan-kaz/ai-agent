@@ -3,7 +3,7 @@ Agent regression: seed test cases into public.agent_regression_tests, then run e
 POST /v1/chat/completions and write back what happened.
 
     .venv/Scripts/python.exe regression/agent_regression.py seed            # create the table, insert the cases once
-    .venv/Scripts/python.exe regression/agent_regression.py seed --reseed   # delete every row, insert the cases again
+    .venv/Scripts/python.exe regression/agent_regression.py seed --reseed   # truncate the table, insert the cases again
     .venv/Scripts/python.exe regression/agent_regression.py run             # run every row, update it
     .venv/Scripts/python.exe regression/agent_regression.py run --agent inventory --pending --ids 3 4
 
@@ -11,6 +11,10 @@ The endpoint runs in this process (the app's own FastAPI app over an in-memory t
 database query and log line of one test can be attributed to it: that is where tables_used, function_used and
 is_guard_protect come from. Nothing on disk is changed. dev.env's tools.write_mode is overridden to dry_run for
 this process only (unless --write-mode live), so tools never page the dealer, opt the lead out or write data.
+
+Set by `seed` (from regression/cases.py): agent_name, input_message, expected_message, intent_classifier, and who the
+test is about: tenant_id, thread_key (SMS) and email (the lead's leads.email). `run` sends each row's own tenant_id,
+thread_key as sms_thread_key and email as email_thread_key.
 
 Column meanings (filled by `run`):
   output_message       the reply (choices[0].message.content); "ERROR <status>: ..." when the request failed
@@ -55,10 +59,6 @@ sys.path.insert(0, str(ROOT))
 
 # ---- what the regression runs against -----------------------------------------------------------------------------
 
-LEAD_ID = "a9fb2889-7689-4439-89ae-59ea939bea44"
-TENANT_ID = "1cbdf5b8-02fd-4945-bc28-151c41f54116"
-THREAD_KEY = "+19163364471"
-
 MODEL = "gpt-oss:20b"
 TEMPERATURE = 0.8
 TOP_P = 0.9
@@ -93,6 +93,9 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     latency             integer,
     last_updated_at     timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS tenant_id uuid;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS thread_key text;
+ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS email text;
 -- Supabase exposes public tables through PostgREST: with RLS on and no policy, only the service role / owner reads it.
 ALTER TABLE {TABLE} ENABLE ROW LEVEL SECURITY;
 """
@@ -128,14 +131,21 @@ async def _connect():
 
 
 async def seed(reseed: bool) -> None:
-    from regression.cases import CASES
+    from regression.cases import CASES, TARGET
 
     conn = await _connect()
     try:
         await conn.execute(DDL)
+        lead = await conn.fetchrow(
+            "SELECT tenant_id, email FROM public.leads WHERE id = $1", UUID(TARGET["lead_id"])
+        )
+        if not lead or str(lead["tenant_id"]) != TARGET["tenant_id"]:
+            sys.exit(f"lead {TARGET['lead_id']} is not a lead of tenant {TARGET['tenant_id']}")
+        tenant_id, thread_key = UUID(TARGET["tenant_id"]), TARGET["thread_key"]
+        email = (lead["email"] or "").strip().lower() or None
         if reseed:
-            deleted = await conn.execute(f"DELETE FROM {TABLE}")
-            print(f"reseed: {deleted}")
+            await conn.execute(f"TRUNCATE {TABLE} RESTART IDENTITY")
+            print("reseed: table truncated")
         existing = {
             (r["agent_name"], r["input_message"])
             for r in await conn.fetch(f"SELECT agent_name, input_message FROM {TABLE}")
@@ -155,13 +165,13 @@ async def seed(reseed: bool) -> None:
         if synced:
             print(f"updated the expectation of {synced} existing rows")
         rows = [
-            (agent, c["input"], c["expected"], json.dumps(c["classifier"]))
+            (agent, c["input"], c["expected"], json.dumps(c["classifier"]), tenant_id, thread_key, email)
             for agent, cases in CASES.items() for c in cases
             if (agent, c["input"]) not in existing
         ]
         await conn.executemany(
-            f"INSERT INTO {TABLE} (agent_name, input_message, expected_message, intent_classifier) "
-            "VALUES ($1, $2, $3, $4::jsonb)",
+            f"INSERT INTO {TABLE} (agent_name, input_message, expected_message, intent_classifier, tenant_id, "
+            "thread_key, email) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)",
             rows,
         )
         print(f"inserted {len(rows)} rows ({len(existing)} already there)")
@@ -322,19 +332,30 @@ def _market_value(cap: dict, node_data: dict, agents_run: set[str]) -> Optional[
     return float(value) if value is not None else None
 
 
-async def _preflight(conn) -> None:
-    """The thread must resolve to the given lead, or every result would be about someone else."""
-    from app.customer.store import phone_variants
+async def _preflight(conn, targets: set[tuple]) -> None:
+    """Each row's tenant + thread + email must resolve to one lead (the one the gateway will load), or every result
+    would be about someone else."""
+    from app.customer.store import email_variants, phone_variants
 
-    row = await conn.fetchrow(
-        "SELECT id, status, lifecycle_stage, dnc, blocked FROM public.leads WHERE tenant_id = $1 "
-        "AND (phone = ANY($2::text[]) OR btrim(thread_id) = ANY($2::text[])) ORDER BY created_at DESC LIMIT 1",
-        UUID(TENANT_ID), phone_variants(THREAD_KEY),
-    )
-    if not row or str(row["id"]) != LEAD_ID:
-        sys.exit(f"thread {THREAD_KEY} resolves to lead {row and row['id']}, not {LEAD_ID}")
-    if "opted_out" in (row["status"], row["lifecycle_stage"]) or row["dnc"] or row["blocked"]:
-        print(f"WARNING: lead {LEAD_ID} is opted out / DNC / blocked: every agent will answer <NOOP>")
+    for tenant_id, thread_key, email in sorted(targets, key=str):
+        if tenant_id is None or not (thread_key or email):
+            sys.exit(f"rows need a tenant_id and a thread_key or email (got {tenant_id}, {thread_key}, {email})")
+        phones = phone_variants(thread_key) if thread_key else []
+        emails = email_variants(email) if email else []
+        leads = await conn.fetch(
+            "SELECT id, status, lifecycle_stage, dnc, blocked FROM public.leads WHERE tenant_id = $1 "
+            "AND (phone = ANY($2::text[]) OR btrim(thread_id) = ANY($2::text[]) OR lower(email) = ANY($3::text[])) "
+            "ORDER BY created_at DESC",
+            tenant_id, phones, emails,
+        )
+        if not leads:
+            sys.exit(f"no lead for tenant {tenant_id}, thread {thread_key}, email {email}")
+        if len(leads) > 1:
+            print(f"WARNING: {len(leads)} leads match thread {thread_key} / email {email}; the newest is used")
+        row = leads[0]
+        print(f"target tenant={tenant_id} thread={thread_key} email={'set' if email else 'none'} -> lead {row['id']}")
+        if "opted_out" in (row["status"], row["lifecycle_stage"]) or row["dnc"] or row["blocked"]:
+            print(f"WARNING: lead {row['id']} is opted out / DNC / blocked: every agent will answer <NOOP>")
 
 
 async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
@@ -344,7 +365,6 @@ async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
     from app.main import app
 
     conn = await _connect()
-    await _preflight(conn)
     where, params = [], []
     if agent:
         params.append(agent)
@@ -355,14 +375,15 @@ async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
         params.append(ids)
         where.append(f"id = ANY(${len(params)}::bigint[])")
     rows = await conn.fetch(
-        f"SELECT id, agent_name, input_message, expected_message, intent_classifier FROM {TABLE}"
-        f"{' WHERE ' + ' AND '.join(where) if where else ''} ORDER BY id",
+        f"SELECT id, agent_name, input_message, expected_message, intent_classifier, tenant_id, thread_key, email "
+        f"FROM {TABLE}{' WHERE ' + ' AND '.join(where) if where else ''} ORDER BY id",
         *params,
     )
     if not rows:
         print("no rows to run (seed first?)")
         await conn.close()
         return
+    await _preflight(conn, {(r["tenant_id"], r["thread_key"], r["email"]) for r in rows})
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = RESULTS_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
@@ -385,8 +406,9 @@ async def run(agent: Optional[str], pending: bool, ids: list[int]) -> None:
                     "model": MODEL,
                     "agent": row["agent_name"],
                     "messages": [{"role": "user", "content": row["input_message"]}],
-                    "tenant_id": TENANT_ID,
-                    "sms_thread_key": THREAD_KEY,
+                    "tenant_id": str(row["tenant_id"]),
+                    **({"sms_thread_key": row["thread_key"]} if row["thread_key"] else {}),
+                    **({"email_thread_key": row["email"]} if row["email"] else {}),
                     "store": STORE,
                     "temperature": TEMPERATURE,
                     "top_p": TOP_P,

@@ -197,3 +197,23 @@ class Routing:
     outcome: str  # silent_closing | silent_suppressed | silent_escalated | rerouted | fallback | silent_confirmed
     from_agent: str
     to_agent: Optional[str] = None
+
+
+# --- a value question answered by the wrong agent (gateway addition) -----------------------------------------------
+# Unmistakable requests for the customer's own vehicle's value or an offer on it. Deliberately narrower than
+# _VALUE_HINT: "how much is the RAV4?" is a stock price question and stays with Inventory.
+_ASKS_FOR_VALUE = re.compile(
+    r"\bwhat\s+(?:would|will|could|can|do|did)\s+(?:you|y'?all|u)\s+(?:give|pay|offer)\b"
+    r"|\bhow\s+much\s+(?:would|will|could|can|do)\s+(?:you|y'?all|u)\s+(?:give|pay|offer)\b"
+    r"|\bwhat'?s?\s+(?:is\s+)?(?:it|my\s+(?:\w+\s+){0,3}?(?:car|truck|suv|vehicle|ride|trade(?:-?in)?|\w+))\s+worth\b"
+    r"|\bwhat\s+(?:it'?s|it\s+is|my\s+(?:\w+\s+){1,3}?is)\s+worth\b"
+    r"|\bhow\s+much\s+is\s+my\s+(?:\w+\s+){0,3}?(?:car|truck|suv|vehicle|trade(?:-?in)?)\s+worth\b"
+    r"|\b(?:trade[\s-]?in|appraisal|resale)\s+value\b"
+    r"|\b(?:value|offer|appraisal|quote)\s+(?:on|for)\s+my\b",
+    re.I,
+)
+
+
+def asks_for_value(message: str) -> bool:
+    """The customer asks what their own vehicle is worth or what we would pay for it."""
+    return bool(_ASKS_FOR_VALUE.search(message or ""))

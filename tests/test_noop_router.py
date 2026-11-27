@@ -307,3 +307,105 @@ def _net_reply(reply, text):
                      ctx=SimpleNamespace(pool=None, tenant_id=None))
     import asyncio
     return asyncio.run(svc._ensure_repeat_decline_suppressed(req, answer)), svc.tools.calls
+
+
+# ---- B. empty reply fallback ------------------------------------------------------------------------------------
+
+from app.llm.base import LLMError as _LLMError, ToolCall  # noqa: E402
+
+
+class EscalateTools:
+    settings = SimpleNamespace(enabled=True)
+
+    def __init__(self, ok=True, offered=True):
+        self.ok, self._offered, self.calls = ok, offered, []
+
+    def offered(self, agent, ctx):
+        return ([ALL_TOOLS["Escalate_To_Human"]] if self._offered else []), {}
+
+    async def run(self, tools, call, ctx):
+        self.calls.append(call)
+        return "{}", ToolRun(call.id, call.name, "code", call.arguments, self.ok, 0, None, True)
+
+
+def _empty(text="maybe I could swing by wednesday around 5?", code="empty_response", tools=None, **body):
+    svc = ChatService(SimpleNamespace(resolve=lambda m, t: SimpleNamespace(id="m", type=None)))
+    svc.tools = tools or EscalateTools()
+
+    async def lead():
+        return {"first_name": "Artrice"}
+
+    ctx = SimpleNamespace(pool=None, tenant_id="t", lead=lead)
+    body.setdefault("tenant_id", "22222222-2222-2222-2222-222222222222")
+    body.setdefault("sms_thread_key", "+15551234567")
+    req = ChatCompletionRequest(model="m", agent="scheduling", messages=[{"role": "user", "content": text}], **body)
+    import asyncio
+    error = _LLMError("gpt-oss:20b returned an empty reply (4 tries)", code=code)
+    return asyncio.run(svc._empty_fallback(req, error, ctx)), svc.tools
+
+
+def test_empty_reply_gets_the_safe_fallback_and_a_page():
+    answer, tools = _empty()
+    assert answer.result.content == ("Hey Artrice — give me a few minutes to pull this up properly, and someone from "
+                                      "our team will follow up shortly with the right number.")
+    assert answer.routing.outcome == "empty_fallback" and [c.name for c in tools.calls] == ["Escalate_To_Human"]
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"code": "provider_error"},  # only empty replies
+    {"sms_thread_key": None, "tenant_id": None},  # no customer: nobody to follow up with
+    {"tools": EscalateTools(ok=False)},  # page failed: no false promise
+    {"tools": EscalateTools(offered=False)},  # no escalation possible
+    {"reroute_noop": False},
+])
+def test_empty_reply_keeps_the_error_when_the_fallback_cannot_be_honest(kwargs):
+    answer, _ = _empty(**kwargs)
+    assert answer is None
+
+
+# ---- C. a value question answered by the wrong agent ----------------------------------------------------------
+
+from app.services.noop_router import asks_for_value  # noqa: E402
+
+
+@pytest.mark.parametrize("message", ["what would you give me for my car? want to know before I come in",
+                                     "What's my 2018 Camry worth?", "just tell me what it's worth",
+                                     "how much would you pay for my truck", "can I get an offer on my Jeep"])
+def test_value_questions(message):
+    assert asks_for_value(message)
+
+
+@pytest.mark.parametrize("message", ["how much is the RAV4?", "Do you have any used Tacomas?", "is the K5 worth it?",
+                                     "can I come see it tomorrow at 4pm", "is it worth coming in on Saturday?"])
+def test_not_value_questions(message):
+    assert not asks_for_value(message)
+
+
+def test_scheduling_answering_a_value_question_is_rerouted_to_value(client, providers):  # noqa: F811
+    providers["claude"].script = [_reply("I don't have an offer ready. Give us a call."),
+                                  _reply("Happy to help - what's the current mileage on it?")]
+    data = _ask(client, "scheduling", "what would you give me for my car? want to know before I come in")
+    assert data["choices"][0]["message"]["content"] == "Happy to help - what's the current mileage on it?"
+    assert data["routing"] == {"outcome": "rerouted", "from_agent": "scheduling", "to_agent": "value_data_collection"}
+    assert [_agent_of(r) for r in providers["claude"].requests] == ["scheduling", "value_data_collection"]
+
+
+def test_value_reroute_leaves_other_turns_alone(client, providers):  # noqa: F811
+    providers["claude"].script = [_reply("We have 2 RAV4s from $27,800.")]
+    data = _ask(client, "inventory", "how much is the RAV4?")
+    assert data["routing"] is None and len(providers["claude"].requests) == 1
+
+
+def test_value_reroute_keeps_the_first_reply_if_value_declines(client, providers):  # noqa: F811
+    providers["claude"].script = [_reply("Call us for an offer."), NOOP]
+    data = _ask(client, "inventory", "what's my car worth?")
+    assert data["choices"][0]["message"]["content"] == "Call us for an offer." and data["routing"] is None
+
+
+def test_value_reroute_skips_turns_where_a_tool_ran(client, providers):  # noqa: F811
+    providers["claude"].script = [
+        LLMResult("", "tool_calls", 1, 1, [ToolCall("t1", "Validate_Appointment", {"proposed_time": "Friday at 3pm"})]),
+        _reply("Friday at 3 works - want me to lock it in? We can talk numbers when you're here."),
+    ]
+    data = _post(client, agent="scheduling", messages=[{"role": "user", "content": "what's my car worth? can I come Friday at 3?"}]).json()
+    assert data["routing"] is None and len(providers["claude"].requests) == 2
