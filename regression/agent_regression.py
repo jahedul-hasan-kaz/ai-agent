@@ -100,6 +100,7 @@ ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS tenant_id uuid;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS thread_key text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS email text;
 ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS lead_id uuid;
+ALTER TABLE {TABLE} ALTER COLUMN expected_message DROP NOT NULL;
 -- Supabase exposes public tables through PostgREST: with RLS on and no policy, only the service role / owner reads it.
 ALTER TABLE {TABLE} ENABLE ROW LEVEL SECURITY;
 """
@@ -125,10 +126,51 @@ def _dsn() -> str:
     return url.replace("postgresql+psycopg2://", "postgresql://", 1).replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-async def _connect():
+async def _connect(attempts: int = 8):
+    """A connection to the backend's Postgres, retried with backoff: the Supabase pooler sometimes drops or stalls
+    new connections for a few minutes."""
     import asyncpg
 
-    return await asyncpg.connect(_dsn(), statement_cache_size=0)
+    for attempt in range(1, attempts + 1):
+        try:
+            return await asyncpg.connect(_dsn(), statement_cache_size=0, timeout=30)
+        except (OSError, asyncio.TimeoutError, asyncpg.exceptions.PostgresConnectionError) as exc:
+            if attempt == attempts:
+                raise
+            wait = min(15 * attempt, 120)
+            print(f"database connect failed ({type(exc).__name__}); retry {attempt}/{attempts - 1} in {wait}s", flush=True)
+            await asyncio.sleep(wait)
+
+
+class _Db:
+    """The harness's own connection (table reads and updates), reopened when the pooler drops it mid-run. The
+    endpoint's own pools are the app's and are not touched."""
+
+    def __init__(self, conn) -> None:
+        self.conn = conn
+
+    async def call(self, method: str, *args):
+        import asyncpg
+
+        transient = (OSError, asyncio.TimeoutError, asyncpg.exceptions.ConnectionDoesNotExistError,
+                     asyncpg.exceptions.InterfaceError, asyncpg.exceptions.QueryCanceledError,
+                     asyncpg.exceptions.TooManyConnectionsError, asyncpg.exceptions.PostgresConnectionError)
+        for attempt in range(1, 9):
+            try:
+                return await getattr(self.conn, method)(*args)
+            except transient as exc:
+                # An overloaded pooler cancels statements (statement timeout) or drops the connection: wait, then
+                # retry on a fresh connection.
+                if attempt == 8:
+                    raise
+                wait = min(10 * attempt, 60)
+                print(f"database {method} failed ({type(exc).__name__}); retry {attempt}/7 in {wait}s", flush=True)
+                await asyncio.sleep(wait)
+                try:
+                    await self.conn.close(timeout=5)
+                except Exception:  # noqa: BLE001 - already gone
+                    pass
+                self.conn = await _connect()
 
 
 # ---- seed ---------------------------------------------------------------------------------------------------------
@@ -168,7 +210,7 @@ async def _customer(conn, tenant_id: str, lead_id: str, thread_key: str, email: 
     )
 
 
-async def seed(reseed: bool) -> None:
+async def seed(reseed: bool, customers: int = 0, with_expected: bool = True) -> None:
     """One row per case per customer. A customer's rows are contiguous and their `final` cases come last, so a run
     (ordered by id) never sends a customer's ordinary cases after one that may end their conversation."""
     from regression.cases import CUSTOMERS, build
@@ -184,7 +226,7 @@ async def seed(reseed: bool) -> None:
             for r in await conn.fetch(f"SELECT lead_id, agent_name, input_message FROM {TABLE}")
         }
         rows = []
-        for tenant_id, lead_id, thread_key, email in CUSTOMERS:
+        for tenant_id, lead_id, thread_key, email in (CUSTOMERS[:customers] if customers else CUSTOMERS):
             customer = await _customer(conn, tenant_id, lead_id, thread_key, email)
             cases = [(agent, c) for agent, items in build(customer).items() for c in items]
             # Stable sort: final cases after the others, and a bare STOP (the database's sms_log opt-out trigger records
@@ -192,7 +234,7 @@ async def seed(reseed: bool) -> None:
             for agent, c in sorted(cases, key=lambda ac: (ac[1]["final"], ac[1]["input"].strip().upper() == "STOP")):
                 if (lead_id, agent, c["input"]) in existing:
                     continue
-                rows.append((agent, c["input"], c["expected"], json.dumps(c["classifier"]), UUID(tenant_id),
+                rows.append((agent, c["input"], c["expected"] if with_expected else None, json.dumps(c["classifier"]), UUID(tenant_id),
                              UUID(lead_id), thread_key, email.lower()))
             print(f"  {customer.dealer:<14} {customer.first or '?':<10} {customer.car:<24} value={customer.value} "
                   f"phone={'yes' if customer.phone else 'no'} {len(cases)} cases")
@@ -388,7 +430,7 @@ async def _preflight(conn, targets: set[tuple]) -> None:
 
 
 async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: int, store: bool,
-              store_optout: bool = False) -> None:
+              store_optout: bool = False, score_rows: bool = True) -> None:
     import httpx
 
     _install_capture()
@@ -414,12 +456,13 @@ async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: 
         await conn.close()
         return
     await _preflight(conn, {(r["tenant_id"], r["lead_id"], r["thread_key"], r["email"]) for r in rows})
+    db = _Db(conn)
     # sms_log's trg_sms_log_optout_dnc records a real DNC (and ta_enter_sms_stop) for a stored inbound message that
     # public.is_optout_message() matches, whatever tools.write_mode is. Those rows run without store unless asked.
     optout_ids = set()
     if store and not store_optout:
         for r in rows:
-            if await conn.fetchval("SELECT public.is_optout_message($1)", r["input_message"]):
+            if await db.call("fetchval", "SELECT public.is_optout_message($1)", r["input_message"]):
                 optout_ids.add(r["id"])
         if optout_ids:
             print(f"{len(optout_ids)} rows are opt-out messages: run without store (--store-optout to store them)")
@@ -507,8 +550,12 @@ async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: 
                     or any(level in ("WARNING", "ERROR") and any(g in msg for g in _GUARD_LOGS) for level, msg in cap["logs"])
                 )
                 combined = cap["ctx"][0].combined_message if cap["ctx"] else row["input_message"]
-                score, reason = await _judge(service.manager, row["agent_name"], row["input_message"],
-                                             row["expected_message"], output, calls, routing)
+                if score_rows and row["expected_message"]:
+                    score, reason = await _judge(service.manager, row["agent_name"], row["input_message"],
+                                                 row["expected_message"], output, calls, routing)
+                else:  # nothing to grade against, or scoring turned off: score stays NULL
+                    score, reason = None, "not scored"
+
                 update = {
                     "output_message": output,
                     "score": score,
@@ -527,7 +574,8 @@ async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: 
                     "latency": data.get("latency_ms", wall_ms) if ok else wall_ms,
                 }
                 async with lock:
-                    await conn.execute(
+                    await db.call(
+                        "execute",
                         f"""UPDATE {TABLE} SET output_message=$2, score=$3, tool_used=$4, tool_category=$5,
                             tool_urgency=$6, re_route_agent_name=$7, is_noop=$8, is_declined=$9, is_guard_protect=$10,
                             intent_classifier=$11::jsonb, select_market_value=$12, combined_message=$13,
@@ -555,7 +603,7 @@ async def run(agent: Optional[str], pending: bool, ids: list[int], concurrency: 
 
             await asyncio.gather(*(customer(q) for q in queues.values()))
 
-    await conn.close()
+    await db.conn.close()
     print(f"\ndone in {int(time.perf_counter() - started_all)}s; report {report_path}")
     for name, values in sorted(scores.items()):
         print(f"  {name:<24} mean score {sum(values) / len(values):.1f} over {len(values)}")
@@ -568,22 +616,25 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     s = sub.add_parser("seed", help="create the table and insert the cases")
     s.add_argument("--reseed", action="store_true", help="truncate the table first")
+    s.add_argument("--customers", type=int, default=0, help="only the first N customers of cases.CUSTOMERS")
+    s.add_argument("--no-expected", action="store_true", help="leave expected_message NULL")
     r = sub.add_parser("run", help="run rows through /v1/chat/completions and update them")
     r.add_argument("--agent", help="only this agent's rows")
     r.add_argument("--pending", action="store_true", help="only rows never run")
     r.add_argument("--ids", type=int, nargs="*", default=[], help="only these row ids")
     r.add_argument("--concurrency", type=int, default=1, help="customers run side by side (default 1)")
     r.add_argument("--no-store", action="store_true", help="do not write the exchanges to sms_log")
+    r.add_argument("--no-score", action="store_true", help="do not grade replies: score stays NULL")
     r.add_argument("--store-optout", action="store_true",
                    help="also store opt-out messages (the database trigger then records a real DNC for the lead)")
     args = parser.parse_args()
 
     _load_env(args.write_mode)
     if args.command == "seed":
-        asyncio.run(seed(args.reseed))
+        asyncio.run(seed(args.reseed, args.customers, not args.no_expected))
     else:
         asyncio.run(run(args.agent, args.pending, args.ids, args.concurrency, STORE and not args.no_store,
-                        args.store_optout))
+                        args.store_optout, not args.no_score))
 
 
 if __name__ == "__main__":

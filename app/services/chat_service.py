@@ -113,7 +113,9 @@ class ChatService:
         if self.tools is None:
             return None
         turns = [{"role": m.role, "content": m.content} for m in req.messages if m.role != "system"]
-        return await self.tools.context(req.tenant_id, req.sms_thread_key, req.email_thread_key, turns, req.node_data)
+        return await self.tools.context(
+            req.tenant_id, req.sms_thread_key, req.email_thread_key, turns, req.node_data, req.record_opt_out,
+        )
 
     async def _database_nodes(self, agent: AgentPrompt, ctx: Optional[ToolContext]) -> dict:
         """The database-backed workflow nodes the agent's prompt reads, from the database: what n8n's "Get tenant",
@@ -261,6 +263,9 @@ class ChatService:
         customer_text = next(m.content for m in reversed(req.messages) if m.role == "user")
         if not reply.strip():
             return StoredMessages(error="empty reply, nothing stored")
+        if not req.record_opt_out and opt_out.detect(customer_text).is_opt_out:
+            # sms_log's opt-out trigger would record a DNC for this message whatever the gateway does.
+            return StoredMessages(error="opt-out message not stored: record_opt_out is false")
         if noop_router.is_noop(reply):
             reply = ""  # nothing is sent to the customer, so no outbound row: only their message is logged (as n8n)
         if self.customers is None:
@@ -446,6 +451,9 @@ class ChatService:
     async def _persist_opt_out(self, ctx: ToolContext, lead: dict) -> ToolRun:
         """n8n "Opt-Out Persist (RPC)": public.process_opt_out(tenant, lead, phone, 'SMS opt-out'). dry_run: nothing."""
         started, args = time.perf_counter(), {"reason": "SMS opt-out"}
+        if not getattr(ctx, "record_opt_out", True):
+            # request.record_opt_out=false: answered as an opt-out, but nothing is written.
+            return ToolRun("call_opt_out", "Opt_Out", "db", {**args, "record_opt_out": False}, True, 0, None, True)
         if not ctx.live:
             return ToolRun("call_opt_out", "Opt_Out", "db", args, True, 0, None, True)
         error = None

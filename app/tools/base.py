@@ -109,6 +109,8 @@ class ToolContext:
     # Outputs of the workflow's computed (non-database) nodes the caller supplied (request.node_data), e.g. the
     # Intent Classifier. Database-backed nodes are never supplied: the lookups below read them.
     node_data: dict[str, Any] = field(default_factory=dict)
+    # request.record_opt_out: false keeps opt-out / DNC writes out of the database (tests).
+    record_opt_out: bool = True
     now_utc: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     # Appointment times Validate_Appointment confirmed during this completion (confirmed_datetime -> result).
     validated_appointments: dict[str, dict[str, Any]] = field(default_factory=dict)

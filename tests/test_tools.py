@@ -408,3 +408,14 @@ def test_availability_is_kept_without_an_exact_clock_time():
     assert _check("Friday after 3pm", availability_date="Friday")["reason"] == "availability"  # a range
     assert _check("Friday at 3pm", availability_date="Friday", availability_request=True)["reason"] == "availability"
     assert _check("What times do you have available Friday?")["reason"] == "availability"  # n8n wording rule
+
+
+async def test_suppression_dnc_not_recorded_when_switched_off():
+    # request.record_opt_out=false: a STOP-authorized DNC is not written; the halt + hold still apply.
+    ctx = _ctx("STOP")
+    ctx.record_opt_out = False
+    stop = await suppress_lead(ctx, {"reason": "stop", "suppression_category": "repeat_decline", "permanent_dnc": True})
+    assert stop["ok"] is True and stop["dnc_applied"] is False and stop["dnc_not_recorded"] is True
+    assert stop["hold_applied"] is True
+    on = await suppress_lead(_ctx("STOP"), {"reason": "stop", "suppression_category": "repeat_decline", "permanent_dnc": True})
+    assert on["dnc_applied"] is True and on["dnc_not_recorded"] is False

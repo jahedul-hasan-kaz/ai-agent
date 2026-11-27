@@ -86,6 +86,13 @@ class ChatCompletionRequest(BaseModel):
         "nodes (the tenant, lead, vehicle, SMS history, ...) and the clock (Get Current Date/Time) are not accepted: "
         "the gateway reads or computes them itself. GET /v1/agents lists the nodes and fields each agent reads.",
     )
+    record_opt_out: bool = Field(
+        True,
+        description="Record opt-outs and DNCs in the database. false: an opt-out is still detected and answered the "
+        "same way, but nothing is written - no public.process_opt_out call, no DNC row from Suppress_Lead (its "
+        "cadence halt and send hold still apply), and with `store` the customer's opt-out message is not logged "
+        "(sms_log's own opt-out trigger would record a DNC). For testing; keep true in production.",
+    )
     opt_out_gate: bool = Field(
         True,
         description="SMS threads: before any agent runs, an opt-out message (STOP, unsubscribe, 'stop texting me', "

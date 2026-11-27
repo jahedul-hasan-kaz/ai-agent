@@ -510,6 +510,9 @@ async def suppress_lead(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
             return {"ok": False, "error": "permanent_dnc_requires_optout_authorization", "suppression_category": category,
                     "permanent_dnc": False, "vehicle_disposed": False}
         effective_dnc, downgraded = False, True
+    dnc_not_recorded = effective_dnc and not getattr(ctx, "record_opt_out", True)
+    if dnc_not_recorded:
+        effective_dnc = False  # request.record_opt_out=false: no DNC row; the rest of the suppression is unchanged
 
     lead = await ctx.lead()
     if ctx.live:
@@ -530,7 +533,7 @@ async def suppress_lead(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     if not effective:
         return {"ok": False, "error": "suppression_noop_nothing_written", "suppression_category": category,
                 "permanent_dnc": False, "vehicle_disposed": False, "nothing_written": True,
-                "dnc_downgraded_to_halt": downgraded, "result": r, "message": _noop_message(category), **dry}
+                "dnc_downgraded_to_halt": downgraded, "dnc_not_recorded": dnc_not_recorded, "result": r, "message": _noop_message(category), **dry}
     if dnc:
         message = "Permanent DNC applied and cadences halted. You may say messages will stop. Do NOT claim a human was notified."
     elif halted > 0 or hold:
@@ -543,7 +546,7 @@ async def suppress_lead(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any
     return {"ok": True, "suppression_category": category, "permanent_dnc": dnc, "vehicle_disposed": vehicle_disposed,
             "action": "suppression", "suppression_effective": True, "nothing_written": False, "dnc_applied": dnc,
             "cadences_halted": halted, "hold_applied": hold, "vehicle_marked_disposed": marked,
-            "dnc_downgraded_to_halt": downgraded, "result": r, "message": message, **dry}
+            "dnc_downgraded_to_halt": downgraded, "dnc_not_recorded": dnc_not_recorded, "result": r, "message": message, **dry}
 
 
 SUPPRESS_LEAD = Tool(

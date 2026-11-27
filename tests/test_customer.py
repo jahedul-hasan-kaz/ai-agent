@@ -267,3 +267,20 @@ def test_a_noop_reply_logs_only_the_customer_message(customer_client):
     assert res.json()["choices"][0]["message"]["content"] == "<NOOP>"
     assert res.json()["stored"] == {"channel": "sms", "inbound_id": "101", "outbound_id": None, "error": None}
     assert store.stored[-1][3:5] == ("Yes, 37000 miles", "")
+
+
+def test_opt_out_message_not_logged_when_record_opt_out_is_false(customer_client):
+    # sms_log's own opt-out trigger would record a DNC for a stored STOP, so it is not stored at all.
+    client, store, _ = customer_client
+    body = _store_body(record_opt_out=False)
+    body["messages"] = [{"role": "user", "content": "STOP"}]
+    res = client.post("/v1/chat/completions", json=body).json()
+    assert res["stored"] == {"channel": None, "inbound_id": None, "outbound_id": None,
+                             "error": "opt-out message not stored: record_opt_out is false"}
+    assert store.stored == []
+    # an ordinary message is still stored, and with the default an opt-out message is too
+    client.post("/v1/chat/completions", json=_store_body(record_opt_out=False))
+    assert len(store.stored) == 1
+    body["record_opt_out"] = True
+    client.post("/v1/chat/completions", json=body)
+    assert len(store.stored) == 2

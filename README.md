@@ -205,6 +205,11 @@ not offered even though some prompts mention them.
   - a customer who already opted out (lead status or lifecycle `opted_out`, `dnc`, `blocked`, or a `dnc` row) gets
     `<NOOP>`: no agent runs. Opt-in (START) is not handled yet: it also gets `<NOOP>`.
 
+  `"record_opt_out": false` (default `true`; the Chat Tester's "Recording opt-outs" chip) keeps opt-outs and DNCs
+  out of the database for testing: the opt-out is detected and answered the same way, but `process_opt_out` is not
+  called, Suppress_Lead writes no DNC row (its halt and hold still apply), and with `store` the opt-out message is
+  not logged (sms_log's opt-out trigger would record a DNC).
+
   `routing.outcome` is `opted_out` or `silent_opted_out`; the `Opt_Out` entry in `tool_calls` reports the write.
 - **Repeat decline / stop-contact safety net.** When any agent answers a repeat decline ("I already told you
   I'm not interested", or the classifier's `repeat_decline`) or a request to stop contacting the customer ("stop

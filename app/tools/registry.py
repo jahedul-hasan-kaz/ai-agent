@@ -159,12 +159,12 @@ class ToolRunner:
 
     async def context(
         self, tenant_id, sms_thread_key, email_thread_key, turns: list[dict[str, Any]],
-        node_data: Optional[dict[str, Any]] = None,
+        node_data: Optional[dict[str, Any]] = None, record_opt_out: bool = True,
     ) -> ToolContext:
         await self._reconnect()
         return ToolContext(
             settings=self.settings, tenant_id=tenant_id, sms_thread_key=sms_thread_key, email_thread_key=email_thread_key,
-            turns=turns, pool=self._pool, http=self.http, node_data=node_data or {},
+            turns=turns, pool=self._pool, http=self.http, node_data=node_data or {}, record_opt_out=record_opt_out,
         )
 
     def offered(self, agent_id: str, ctx: ToolContext) -> tuple[list[Tool], dict[str, str]]:

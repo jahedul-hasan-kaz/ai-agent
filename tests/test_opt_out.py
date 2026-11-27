@@ -149,3 +149,36 @@ def test_normal_messages_go_to_the_agents():
 def test_gate_is_skipped_when_off_or_not_sms():
     assert _gate("STOP", opt_out_gate=False)[0] is None
     assert _gate("STOP", sms_thread_key=None, email_thread_key="a@b.com")[0] is None
+
+
+# ---- record_opt_out=false: detected and answered, nothing written ---------------------------------------------
+
+
+def _gate_ctx(text, live, record):
+    async def lead():
+        return LEAD
+
+    return SimpleNamespace(pool=FakePool(), lead=lead, inbound_text=text, live=live, record_opt_out=record)
+
+
+@pytest.mark.parametrize("live", [True, False])
+def test_opt_out_not_recorded_when_switched_off(live):
+    svc = ChatService(SimpleNamespace(resolve=lambda m, t: SimpleNamespace(id="m", type=None)))
+    ctx = _gate_ctx("STOP", live, record=False)
+    req = ChatCompletionRequest(model="m", agent="scheduling", tenant_id=TENANT, sms_thread_key=LEAD["phone"],
+                                record_opt_out=False, messages=[{"role": "user", "content": "STOP"}])
+    answer = asyncio.run(svc._opt_out_gate(req, ctx))
+    assert answer.result.content == OPT_OUT_CONFIRMATION and answer.routing.outcome == "opted_out"  # same answer
+    [run] = answer.runs
+    assert run.ok and run.dry_run and run.arguments == {"reason": "SMS opt-out", "record_opt_out": False}
+    assert not any("process_opt_out" in sql for sql, _ in ctx.pool.calls)  # nothing written, even in live
+
+
+def test_opt_out_recorded_by_default():
+    svc = ChatService(SimpleNamespace(resolve=lambda m, t: SimpleNamespace(id="m", type=None)))
+    ctx = _gate_ctx("STOP", live=True, record=True)
+    req = ChatCompletionRequest(model="m", agent="scheduling", tenant_id=TENANT, sms_thread_key=LEAD["phone"],
+                                messages=[{"role": "user", "content": "STOP"}])
+    assert req.record_opt_out is True
+    answer = asyncio.run(svc._opt_out_gate(req, ctx))
+    assert any("process_opt_out" in sql for sql, _ in ctx.pool.calls) and not answer.runs[0].dry_run
